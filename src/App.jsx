@@ -162,9 +162,10 @@ ${jobDescription}`;
           'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: 'gpt-4o',
+          model: 'gpt-5.2',
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: 1000,
+          max_completion_tokens: 1000,
+          reasoning_effort: "low",
           response_format: { type: 'json_object' }
         })
       });
@@ -306,12 +307,14 @@ Provide 5-10 high-impact suggestions. The "original" field MUST be an exact subs
           'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: 'gpt-4o',
+          model: 'gpt-5.2',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userMessage }
           ],
-          max_tokens: 4000,
+          max_completion_tokens: 5000,
+          reasoning_effort: "low",
+          verbosity: "medium",
           response_format: { type: 'json_object' }
         })
       });
@@ -1149,7 +1152,7 @@ Responsibilities:
           </div>
           <div className="inline-flex items-center gap-3 px-5 py-2.5">
             <p className="text-center text-slate-500 text-xs mt-6">
-          Note: OpenAI API key is used for both CV analysis (GPT-4o) and voice narration (TTS). 
+          Note: OpenAI API key is used for both CV analysis (GPT-5.2) and voice narration (TTS). 
           For Anthropic analysis, you'll still need an OpenAI key for TTS.
         </p>
         </div>
@@ -1167,7 +1170,7 @@ Responsibilities:
                 onChange={(e) => setApiProvider(e.target.value)}
                 className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-900 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition"
               >
-                <option value="openai">OpenAI (GPT-4o)</option>
+                <option value="openai">OpenAI (GPT-5.2)</option>
                 <option value="anthropic">Anthropic (Claude)</option>
               </select>
             </div>
