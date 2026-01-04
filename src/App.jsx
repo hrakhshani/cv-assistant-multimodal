@@ -235,6 +235,7 @@ const analyzeCV = async (cvText, jobDescription, apiKey, apiProvider = 'anthropi
     stage: 'keywords',
     totalKeywords: keywordsInJob.length,
     matchedKeywords: keywordsInCV.length,
+    matchedKeywordsList: keywordsInCV,
     missingKeywords,
     message: `Found ${keywordsInJob.length} validated keywords; ${missingKeywords.length} are missing from your CV.`
   });
@@ -1318,6 +1319,7 @@ const InputView = ({ onAnalyze, isLoading, progress }) => {
   const progressStage = progress?.stage || (isLoading ? 'keywords' : 'idle');
   const totalKeywords = typeof progress?.totalKeywords === 'number' ? progress.totalKeywords : null;
   const matchedKeywords = typeof progress?.matchedKeywords === 'number' ? progress.matchedKeywords : null;
+  const matchedKeywordsList = progress?.matchedKeywordsList || [];
   const missingKeywords = progress?.missingKeywords || [];
   const missingPreview = missingKeywords.slice(0, 5);
   const hasMoreMissing = missingKeywords.length > missingPreview.length;
@@ -1327,6 +1329,10 @@ const InputView = ({ onAnalyze, isLoading, progress }) => {
   const isGenerating = currentStageRank >= 2;
   const isDone = currentStageRank >= 3;
   const statusMessage = progress?.message || 'Analyzing your CV and job description...';
+  const [showAllMissing, setShowAllMissing] = useState(false);
+  const missingDisplay = showAllMissing ? missingKeywords : missingPreview;
+  const hasMoreMatched = matchedKeywordsList.length > 5;
+  const matchedPreview = hasMoreMatched ? matchedKeywordsList.slice(0, 5) : matchedKeywordsList;
 
   // Load saved settings
   useEffect(() => {
@@ -1344,6 +1350,12 @@ const InputView = ({ onAnalyze, isLoading, progress }) => {
     localStorage.setItem('cv-coach-api-provider', apiProvider);
     localStorage.setItem('cv-coach-voice', selectedVoice);
   }, [apiKey, apiProvider, selectedVoice]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setShowAllMissing(false);
+    }
+  }, [isLoading]);
 
   if (isLoading) {
     return (
@@ -1394,6 +1406,20 @@ const InputView = ({ onAnalyze, isLoading, progress }) => {
                       style={{ width: `${Math.min(100, (matchedKeywords / Math.max(totalKeywords, 1)) * 100)}%` }}
                     />
                   </div>
+                  {matchedKeywordsList.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {matchedPreview.map((kw) => (
+                        <span key={kw} className="text-xs text-emerald-800 font-semibold bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg">
+                          {kw}
+                        </span>
+                      ))}
+                      {hasMoreMatched && (
+                        <span className="text-[11px] text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded-lg">
+                          +{matchedKeywordsList.length - matchedPreview.length} more
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p className="text-xs text-slate-500 mt-2">Finding and validating each keyword...</p>
@@ -1421,20 +1447,24 @@ const InputView = ({ onAnalyze, isLoading, progress }) => {
                   : 'Checking which of those keywords are absent from your CV...'}
               </p>
               <div className="flex flex-wrap gap-1 mt-2">
-                {hasKeywordData && missingPreview.length === 0 && (
+                {hasKeywordData && missingKeywords.length === 0 && (
                   <span className="text-xs text-emerald-700 font-semibold bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg">
                     Nice—nothing missing.
                   </span>
                 )}
-                {hasKeywordData && missingPreview.map((kw) => (
+                {hasKeywordData && missingDisplay.map((kw) => (
                   <span key={kw} className="text-xs text-amber-800 font-semibold bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">
                     {kw}
                   </span>
                 ))}
-                {hasKeywordData && hasMoreMissing && (
-                  <span className="text-[11px] text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded-lg">
-                    +{missingKeywords.length - missingPreview.length} more
-                  </span>
+                {hasKeywordData && hasMoreMissing && !showAllMissing && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllMissing(true)}
+                    className="text-[11px] text-slate-600 bg-white border border-slate-200 px-2 py-1 rounded-lg hover:border-emerald-300 hover:text-emerald-700 transition"
+                  >
+                    + Show {missingKeywords.length - missingPreview.length} more
+                  </button>
                 )}
                 {!hasKeywordData && (
                   <span className="text-xs text-slate-500">We’ll list the missing ones here.</span>
