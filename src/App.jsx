@@ -373,13 +373,14 @@ Provide 5-10 high-impact suggestions. The "original" field MUST be an exact subs
 // OPENAI TEXT-TO-SPEECH API
 // ============================================
 
-const generateSpeech = async (text, apiKey, voice = 'onyx', speed = 1.2) => {
+const generateSpeech = async (text, apiKey, voice = 'onyx', speed = 1.2, signal) => {
   const response = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`
     },
+    signal,
     body: JSON.stringify({
       model: 'tts-1',
       input: text,
@@ -408,6 +409,10 @@ const useAudioSystem = (apiKey) => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef(null);
+  const prefetchTasksRef = useRef(new Map());
+  const audioCacheRef = useRef(new Map());
+
+  const makeCacheKey = useCallback((text, voice, speed) => `${voice}-${speed}-${text}`, []);
 
   const initCtx = useCallback(() => {
     if (!ctxRef.current) {
@@ -446,6 +451,44 @@ const useAudioSystem = (apiKey) => {
     playTone(freqs[category] || 523, 0.15, 'triangle');
   }, [playTone]);
 
+  const clearCachedAudio = useCallback(() => {
+    prefetchTasksRef.current.forEach(({ controller }) => controller.abort());
+    prefetchTasksRef.current.clear();
+    audioCacheRef.current.forEach((url) => URL.revokeObjectURL(url));
+    audioCacheRef.current.clear();
+  }, []);
+
+  const prefetchSpeech = useCallback((text, voice = 'onyx', speed = 1.4) => {
+    if (!apiKey || !text?.trim()) return null;
+
+    const key = makeCacheKey(text, voice, speed);
+    if (audioCacheRef.current.has(key)) return audioCacheRef.current.get(key);
+    if (prefetchTasksRef.current.has(key)) return prefetchTasksRef.current.get(key).promise;
+
+    const controller = new AbortController();
+
+    const promise = generateSpeech(text, apiKey, voice, speed, controller.signal)
+      .then((audioUrl) => {
+        if (controller.signal.aborted) {
+          URL.revokeObjectURL(audioUrl);
+          return null;
+        }
+        audioCacheRef.current.set(key, audioUrl);
+        prefetchTasksRef.current.delete(key);
+        return audioUrl;
+      })
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          console.error('TTS prefetch error:', error);
+        }
+        prefetchTasksRef.current.delete(key);
+        return null;
+      });
+
+    prefetchTasksRef.current.set(key, { controller, promise });
+    return promise;
+  }, [apiKey, makeCacheKey]);
+
   const speak = useCallback(async (text, onEnd, voice = 'onyx', speed = 1.4) => {
     if (!apiKey) {
       console.warn('No API key provided for TTS');
@@ -453,31 +496,43 @@ const useAudioSystem = (apiKey) => {
       return;
     }
 
-    // Stop any currently playing audio
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
     }
 
-    // Cancel any pending requests
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
     abortControllerRef.current = new AbortController();
 
-    setIsLoading(true);
+    const key = makeCacheKey(text, voice, speed);
+    let audioUrl = audioCacheRef.current.get(key);
+
+    setIsLoading(!audioUrl);
     setIsSpeaking(false);
 
     try {
-      const audioUrl = await generateSpeech(text, apiKey, voice, speed);
+      if (!audioUrl && prefetchTasksRef.current.has(key)) {
+        audioUrl = await prefetchTasksRef.current.get(key).promise;
+      }
+
+      if (!audioUrl) {
+        audioUrl = await generateSpeech(text, apiKey, voice, speed, abortControllerRef.current.signal);
+      }
       
-      // Check if we were aborted while waiting
       if (abortControllerRef.current?.signal.aborted) {
-        URL.revokeObjectURL(audioUrl);
+        if (!audioCacheRef.current.has(key) && audioUrl) {
+          URL.revokeObjectURL(audioUrl);
+        }
         return;
       }
 
-      const audio = new Audio(audioUrl);
+      if (!audioCacheRef.current.has(key) && audioUrl) {
+        audioCacheRef.current.set(key, audioUrl);
+      }
+
+      const audio = new Audio(audioCacheRef.current.get(key));
       audioRef.current = audio;
 
       audio.onplay = () => {
@@ -485,10 +540,18 @@ const useAudioSystem = (apiKey) => {
         setIsSpeaking(true);
       };
 
+      const cleanupUrl = () => {
+        const cachedUrl = audioCacheRef.current.get(key);
+        if (cachedUrl) {
+          URL.revokeObjectURL(cachedUrl);
+          audioCacheRef.current.delete(key);
+        }
+        audioRef.current = null;
+      };
+
       audio.onended = () => {
         setIsSpeaking(false);
-        URL.revokeObjectURL(audioUrl);
-        audioRef.current = null;
+        cleanupUrl();
         onEnd?.();
       };
 
@@ -496,8 +559,7 @@ const useAudioSystem = (apiKey) => {
         console.error('Audio playback error:', e);
         setIsLoading(false);
         setIsSpeaking(false);
-        URL.revokeObjectURL(audioUrl);
-        audioRef.current = null;
+        cleanupUrl();
         onEnd?.();
       };
 
@@ -510,26 +572,29 @@ const useAudioSystem = (apiKey) => {
       setIsSpeaking(false);
       onEnd?.();
     }
-  }, [apiKey]);
+  }, [apiKey, makeCacheKey]);
 
-  const stop = useCallback(() => {
-    // Abort any pending requests
+  const stop = useCallback((options = {}) => {
+    const { flushCache = false } = options;
+
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
     
-    // Stop current audio
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
       audioRef.current = null;
     }
     
+    if (flushCache) {
+      clearCachedAudio();
+    }
+
     setIsSpeaking(false);
     setIsLoading(false);
-  }, []);
+  }, [clearCachedAudio]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (abortControllerRef.current) {
@@ -538,10 +603,11 @@ const useAudioSystem = (apiKey) => {
       if (audioRef.current) {
         audioRef.current.pause();
       }
+      clearCachedAudio();
     };
-  }, []);
+  }, [clearCachedAudio]);
 
-  return { playTone, playTransition, playHighlight, speak, stop, isSpeaking, isLoading };
+  return { playTone, playTransition, playHighlight, speak, prefetchSpeech, stop, isSpeaking, isLoading };
 };
 
 // ============================================
@@ -821,7 +887,7 @@ const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice })
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
   
-  const { playTransition, playHighlight, speak, stop, isSpeaking, isLoading } = useAudioSystem(apiKey);
+  const { playTransition, playHighlight, speak, prefetchSpeech, stop, isSpeaking, isLoading } = useAudioSystem(apiKey);
   const timeoutRef = useRef(null);
 
   const newScore = Math.min(95, score + Math.round(changes.length * 5));
@@ -835,6 +901,8 @@ const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice })
     
     const change = changes[slideIndex];
     const script = generateScript(change, slideIndex, changes.length, score);
+    const nextChange = changes[slideIndex + 1];
+    const nextScript = nextChange ? generateScript(nextChange, slideIndex + 1, changes.length, score) : null;
     
     // Phase 1: Show the slide intro immediately
     setPhase('intro');
@@ -847,31 +915,39 @@ const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice })
       // Phase 3: Show before-after comparison visually
       timeoutRef.current = setTimeout(() => {
         setPhase('before-after');
+        // Start pulling down audio while the visuals are animating
+        if (audioEnabled) {
+          prefetchSpeech(script.categoryIntro, selectedVoice, 1.0);
+          prefetchSpeech(script.mainExplanation, selectedVoice, 1.0);
+        }
         
         // Phase 4: After visual elements are shown, START audio narration
         timeoutRef.current = setTimeout(() => {
           if (audioEnabled) {
-            // Now speak the category intro
+            const handleImpact = () => {
+              setPhase('impact');
+              if (nextScript) {
+                prefetchSpeech(nextScript.categoryIntro, selectedVoice, 1.0);
+              }
+              
+              speak(script.impact, () => {
+                if (isPlaying && slideIndex < changes.length - 1) {
+                  timeoutRef.current = setTimeout(() => {
+                    setCurrentSlide(slideIndex + 1);
+                  }, 1500);
+                } else if (slideIndex === changes.length - 1) {
+                  timeoutRef.current = setTimeout(() => {
+                    setCurrentSlide(changes.length);
+                    setIsPlaying(false);
+                  }, 2000);
+                }
+              }, selectedVoice, 1.0);
+            };
+
             speak(script.categoryIntro, () => {
-              // Then the main explanation
+              prefetchSpeech(script.impact, selectedVoice, 1.0);
               speak(script.mainExplanation, () => {
-                // Show impact phase
-                setPhase('impact');
-                
-                // Speak the impact
-                speak(script.impact, () => {
-                  // Move to next slide or finish
-                  if (isPlaying && slideIndex < changes.length - 1) {
-                    timeoutRef.current = setTimeout(() => {
-                      setCurrentSlide(slideIndex + 1);
-                    }, 1500);
-                  } else if (slideIndex === changes.length - 1) {
-                    timeoutRef.current = setTimeout(() => {
-                      setCurrentSlide(changes.length);
-                      setIsPlaying(false);
-                    }, 2000);
-                  }
-                }, selectedVoice, 1.0);
+                handleImpact();
               }, selectedVoice, 1.0);
             }, selectedVoice, 1.0);
           } else {
@@ -894,14 +970,14 @@ const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice })
       
     }, 500); // Wait 500ms to show highlight after intro
     
-  }, [changes, score, audioEnabled, isPlaying, playHighlight, speak, selectedVoice]);
+  }, [changes, score, audioEnabled, isPlaying, playHighlight, speak, prefetchSpeech, selectedVoice]);
 
   useEffect(() => {
     if (currentSlide >= 0 && currentSlide < changes.length) {
       runSlideSequence(currentSlide);
     }
     return clearTimeouts;
-  }, [currentSlide]);
+  }, [currentSlide, runSlideSequence]);
 
   useEffect(() => {
     return () => {
