@@ -118,7 +118,7 @@ const generateScript = (change, index, total, score) => {
 // API INTEGRATION
 // ============================================
 
-const extractKeywords = async (jobDescription, apiKey, apiProvider = 'anthropic') => {
+const extractKeywords = async (jobDescription, apiKey, apiProvider = 'anthropic', onLog) => {
   const prompt = `Given the following job description, identify the most important keywords and phrases that would increase a candidate's chances during the interview process.
 
 Focus on:
@@ -136,6 +136,7 @@ ${jobDescription}`;
 
   try {
     let content;
+    const model = apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-5.2';
 
     if (apiProvider === 'anthropic') {
       const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -146,7 +147,7 @@ ${jobDescription}`;
           'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model,
           max_tokens: 1000,
           messages: [{ role: 'user', content: prompt }]
         })
@@ -162,7 +163,7 @@ ${jobDescription}`;
           'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: 'gpt-5.2',
+          model,
           messages: [{ role: 'user', content: prompt }],
           max_completion_tokens: 1000,
           reasoning_effort: "low",
@@ -174,11 +175,28 @@ ${jobDescription}`;
       content = data.choices?.[0]?.message?.content || '';
     }
 
+    onLog?.({
+      stage: 'keywords',
+      provider: apiProvider,
+      model,
+      prompt,
+      response: content,
+      status: 'success'
+    });
+
     const jsonMatch = content.match(/\[[\s\S]*\]/);
     if (!jsonMatch) throw new Error('No JSON array found in keyword response');
     
     return JSON.parse(jsonMatch[0]);
   } catch (error) {
+    onLog?.({
+      stage: 'keywords',
+      provider: apiProvider,
+      model: apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-5.2',
+      prompt,
+      response: error.message,
+      status: 'error'
+    });
     console.error('Keyword extraction error:', error);
     throw error;
   }
@@ -200,9 +218,9 @@ const validateKeywords = (keywords, jobDescription, cvText) => {
   }));
 };
 
-const analyzeCV = async (cvText, jobDescription, apiKey, apiProvider = 'anthropic') => {
+const analyzeCV = async (cvText, jobDescription, apiKey, apiProvider = 'anthropic', onLog) => {
   // Step 1: Extract keywords from job description
-  const rawKeywords = await extractKeywords(jobDescription, apiKey, apiProvider);
+  const rawKeywords = await extractKeywords(jobDescription, apiKey, apiProvider, onLog);
   
   // Step 2: Validate keywords actually appear in the text
   const validatedKeywords = validateKeywords(rawKeywords, jobDescription, cvText);
@@ -278,6 +296,10 @@ Return ONLY valid JSON:
 Provide 5-10 high-impact suggestions. The "original" field MUST be an exact substring from the CV.`;
 
   const userMessage = `JOB DESCRIPTION:\n${jobDescription}\n\nCV:\n${cvText}`;
+  const model = apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-5.2';
+  const combinedPrompt = apiProvider === 'anthropic'
+    ? `${systemPrompt}\n\n${userMessage}`
+    : `System:\n${systemPrompt}\n\nUser:\n${userMessage}`;
 
   try {
     let content;
@@ -291,7 +313,7 @@ Provide 5-10 high-impact suggestions. The "original" field MUST be an exact subs
           'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model,
           max_tokens: 4000,
           messages: [{ role: 'user', content: `${systemPrompt}\n\n${userMessage}` }]
         })
@@ -307,7 +329,7 @@ Provide 5-10 high-impact suggestions. The "original" field MUST be an exact subs
           'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: 'gpt-5.2',
+          model,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userMessage }
@@ -323,13 +345,22 @@ Provide 5-10 high-impact suggestions. The "original" field MUST be an exact subs
       content = data.choices?.[0]?.message?.content || '';
     }
 
+    onLog?.({
+      stage: 'analysis',
+      provider: apiProvider,
+      model,
+      prompt: combinedPrompt,
+      response: content,
+      status: 'success'
+    });
+
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON found in response');
 
     const result = JSON.parse(jsonMatch[0]);
 
     // Validate that original text actually exists in CV
-    const validated = result.suggestions
+    const validated = (result.suggestions || [])
       .map((s, idx) => {
         const start = cvText.indexOf(s.original);
         if (start === -1) {
@@ -362,6 +393,14 @@ Provide 5-10 high-impact suggestions. The "original" field MUST be an exact subs
       suggestions: validated
     };
   } catch (error) {
+    onLog?.({
+      stage: 'analysis',
+      provider: apiProvider,
+      model,
+      prompt: combinedPrompt,
+      response: error.message,
+      status: 'error'
+    });
     console.error('CV Analysis Error:', error);
     throw error;
   }
@@ -878,6 +917,108 @@ const VoiceSelector = ({ selectedVoice, onVoiceChange }) => {
 };
 
 // ============================================
+// PROMPT/RESPONSE LOG CONSOLE
+// ============================================
+
+const LogConsole = ({ logs, onClear }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const getStageLabel = (stage) => {
+    if (stage === 'analysis') return 'CV Analysis';
+    if (stage === 'keywords') return 'Keyword Extraction';
+    return 'Log';
+  };
+
+  return (
+    <div className="fixed bottom-5 right-5 z-50 text-slate-900">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="px-4 py-2 rounded-xl bg-white border border-slate-200 shadow-lg shadow-emerald-50 flex items-center gap-2 hover:border-emerald-300 transition"
+      >
+        <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01" />
+        </svg>
+        <span className="text-sm font-semibold">Prompt Log</span>
+        {logs.length > 0 && (
+          <span className="inline-flex items-center justify-center w-6 h-6 text-xs font-bold text-emerald-800 bg-emerald-100 rounded-full">
+            {logs.length}
+          </span>
+        )}
+      </button>
+
+      {isOpen && (
+        <div className="mt-3 w-[90vw] sm:w-[480px] max-h-[70vh] bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
+            <div>
+              <div className="text-sm font-semibold">Prompt & Raw Response Log</div>
+              <div className="text-xs text-slate-500">
+                Captures the exact prompts sent to the model and the raw replies returned.
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onClear}
+                className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100"
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700"
+                aria-label="Close log console"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <div className="p-4 space-y-3 overflow-y-auto max-h-[60vh] bg-white">
+            {logs.length === 0 ? (
+              <div className="text-sm text-slate-500">No prompts captured yet. Run an analysis to populate the log.</div>
+            ) : (
+              [...logs].reverse().map((log) => (
+                <div key={log.id} className="border border-slate-200 rounded-xl p-3 bg-slate-50">
+                  <div className="flex items-center justify-between text-xs text-slate-600">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                        log.stage === 'analysis'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : log.stage === 'keywords'
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {getStageLabel(log.stage)}
+                      </span>
+                      <span className="text-slate-500">
+                        {log.provider}{log.model ? ` • ${log.model}` : ''}
+                        {log.status === 'error' && ' • error'}
+                      </span>
+                    </div>
+                    <span className="text-slate-400">
+                      {new Date(log.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 text-[11px] uppercase font-semibold text-slate-500">Prompt</div>
+                  <pre className="mt-1 bg-white border border-slate-200 rounded-lg p-3 text-xs font-mono whitespace-pre-wrap break-words max-h-32 overflow-auto">
+                    {log.prompt || '—'}
+                  </pre>
+
+                  <div className="mt-3 text-[11px] uppercase font-semibold text-slate-500">Raw Response</div>
+                  <pre className="mt-1 bg-white border border-slate-200 rounded-lg p-3 text-xs font-mono whitespace-pre-wrap break-words max-h-32 overflow-auto">
+                    {log.response || '—'}
+                  </pre>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================
 // MAIN PRESENTATION COMPONENT
 // ============================================
 
@@ -917,7 +1058,7 @@ const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice })
         setPhase('before-after');
         // Start pulling down audio while the visuals are animating
         if (audioEnabled) {
-          prefetchSpeech(script.categoryIntro, selectedVoice, 1.0);
+          //prefetchSpeech(script.categoryIntro, selectedVoice, 1.0);
           prefetchSpeech(script.mainExplanation, selectedVoice, 1.0);
         }
         
@@ -927,10 +1068,10 @@ const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice })
             const handleImpact = () => {
               setPhase('impact');
               if (nextScript) {
-                prefetchSpeech(nextScript.categoryIntro, selectedVoice, 1.0);
+                //prefetchSpeech(nextScript.categoryIntro, selectedVoice, 1.0);
               }
               
-              speak(script.impact, () => {
+              speak("", () => {
                 if (isPlaying && slideIndex < changes.length - 1) {
                   timeoutRef.current = setTimeout(() => {
                     setCurrentSlide(slideIndex + 1);
@@ -944,7 +1085,7 @@ const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice })
               }, selectedVoice, 1.0);
             };
 
-            speak(script.categoryIntro, () => {
+            speak("", () => {
               prefetchSpeech(script.impact, selectedVoice, 1.0);
               speak(script.mainExplanation, () => {
                 handleImpact();
@@ -1353,6 +1494,28 @@ export default function App() {
   const [error, setError] = useState(null);
   const [apiKey, setApiKey] = useState('');
   const [selectedVoice, setSelectedVoice] = useState('onyx');
+  const [logs, setLogs] = useState([]);
+
+  const addLogEntry = useCallback((entry) => {
+    setLogs((prev) => {
+      const id = typeof crypto !== 'undefined' && crypto.randomUUID 
+        ? crypto.randomUUID() 
+        : `log-${Date.now()}-${prev.length}`;
+      const timestamp = entry.timestamp || Date.now();
+      const next = [
+        ...prev,
+        {
+          id,
+          timestamp,
+          status: 'success',
+          ...entry,
+        }
+      ];
+      return next.slice(-30); // keep last 30 entries to avoid bloat
+    });
+  }, []);
+
+  const clearLogs = useCallback(() => setLogs([]), []);
 
   const handleAnalyze = async (cv, job, key, apiProvider, voice) => {
     setIsLoading(true);
@@ -1362,7 +1525,7 @@ export default function App() {
     setSelectedVoice(voice);
 
     try {
-      const result = await analyzeCV(cv, job, key, apiProvider);
+      const result = await analyzeCV(cv, job, key, apiProvider, addLogEntry);
       setChanges(result.suggestions);
       setScore(result.score);
       setView('presentation');
@@ -1378,22 +1541,22 @@ export default function App() {
     setChanges([]);
   };
 
-  if (view === 'presentation' && changes.length > 0) {
-    return (
-      <Presentation 
-        cvText={cvText} 
-        changes={changes} 
-        score={score} 
-        onBack={handleBack} 
-        apiKey={apiKey}
-        selectedVoice={selectedVoice}
-      />
-    );
-  }
+  const showPresentation = view === 'presentation' && changes.length > 0;
 
   return (
     <>
-      <InputView onAnalyze={handleAnalyze} isLoading={isLoading} />
+      {showPresentation ? (
+        <Presentation 
+          cvText={cvText} 
+          changes={changes} 
+          score={score} 
+          onBack={handleBack} 
+          apiKey={apiKey}
+          selectedVoice={selectedVoice}
+        />
+      ) : (
+        <InputView onAnalyze={handleAnalyze} isLoading={isLoading} />
+      )}
       {error && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-500/90 backdrop-blur-sm text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-3 max-w-lg">
           <span>⚠️</span>
@@ -1401,6 +1564,7 @@ export default function App() {
           <button onClick={() => setError(null)} className="hover:bg-white/20 rounded-lg p-1">✕</button>
         </div>
       )}
+      <LogConsole logs={logs} onClear={clearLogs} />
     </>
   );
 }
