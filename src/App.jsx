@@ -427,6 +427,41 @@ Provide 5-10 high-impact suggestions. The "original" field MUST be an exact subs
   }
 };
 
+// Apply validated suggestions to the CV text to generate an improved draft
+const applySuggestionsToCV = (cvText, suggestions = []) => {
+  if (!Array.isArray(suggestions) || suggestions.length === 0) {
+    return { text: cvText, applied: [] };
+  }
+
+  const sorted = [...suggestions]
+    .filter((s) => typeof s.startIndex === 'number' && typeof s.endIndex === 'number' && s.startIndex >= 0)
+    .sort((a, b) => a.startIndex - b.startIndex);
+
+  let cursor = 0;
+  let output = '';
+  const applied = [];
+
+  sorted.forEach((s) => {
+    // Skip overlapping or invalid ranges to keep the text coherent
+    if (s.startIndex < cursor || s.endIndex > cvText.length) return;
+    output += cvText.slice(cursor, s.startIndex);
+    const replacementText = typeof s.replacement === 'string' ? s.replacement : s.original || '';
+    output += replacementText;
+    cursor = s.endIndex;
+    applied.push(s.id);
+  });
+
+  output += cvText.slice(cursor);
+
+  return { text: output, applied };
+};
+
+// Re-check which keywords remain missing after applying the replacements
+const computeMissingKeywordsAfter = (keywordsInJob = [], updatedCV = '') => {
+  const loweredCV = updatedCV.toLowerCase();
+  return keywordsInJob.filter((kw) => !loweredCV.includes(kw.toLowerCase()));
+};
+
 //export { analyzeCV, extractKeywords, validateKeywords };
 
 // ============================================
@@ -844,10 +879,26 @@ const IntroSlide = ({ isActive, score, totalChanges, onStart }) => {
 // OUTRO SLIDE
 // ============================================
 
-const OutroSlide = ({ isActive, score, newScore, totalChanges, onRestart, onBack }) => {
+const OutroSlide = ({ 
+  isActive, 
+  score, 
+  newScore, 
+  totalChanges, 
+  onRestart, 
+  onBack,
+  improvedCV,
+  keywordSnapshot
+}) => {
+  const totalKeywords = keywordSnapshot?.total || 0;
+  const missingBefore = keywordSnapshot?.before || 0;
+  const missingAfter = keywordSnapshot?.after || 0;
+  const missingAfterList = keywordSnapshot?.missingAfterList || [];
+  const missingBeforeList = keywordSnapshot?.missingBeforeList || [];
+  const delta = Math.max(0, missingBefore - missingAfter);
+
   return (
-    <div className={`absolute inset-0 flex items-center justify-center transition-all duration-700 ${isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-      <div className="text-center max-w-2xl px-8">
+    <div className={`absolute inset-0 flex items-center justify-center transition-all duration-700 ${isActive ? 'opacity-100 overflow-y-auto py-10' : 'opacity-0 pointer-events-none'}`}>
+      <div className="text-center max-w-4xl px-8">
         
         {/* Success animation */}
         <div className="mb-8">
@@ -878,6 +929,70 @@ const OutroSlide = ({ isActive, score, newScore, totalChanges, onRestart, onBack
           <div className="text-center">
             <div className="text-5xl font-bold text-emerald-600">{newScore}%</div>
             <div className="text-emerald-500 text-sm">Projected</div>
+          </div>
+        </div>
+
+        {/* Keyword coverage delta */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10 text-left">
+          <div className="p-4 rounded-2xl border border-amber-100 bg-amber-50/60 shadow-sm">
+            <div className="text-xs uppercase font-semibold text-amber-700">Missing keywords (before)</div>
+            <div className="text-3xl font-bold text-amber-700 mt-2">{missingBefore}</div>
+            <div className="text-xs text-slate-500 mt-1">{totalKeywords} total from the job description</div>
+            {missingBeforeList.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1 text-[11px] text-amber-800">
+                {missingBeforeList.slice(0, 6).map((kw) => (
+                  <span key={kw} className="px-2 py-1 rounded-lg bg-white border border-amber-100">{kw}</span>
+                ))}
+                {missingBeforeList.length > 6 && (
+                  <span className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-500">
+                    +{missingBeforeList.length - 6} more
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="p-4 rounded-2xl border border-emerald-100 bg-emerald-50/60 shadow-sm">
+            <div className="text-xs uppercase font-semibold text-emerald-700">Missing keywords (after)</div>
+            <div className="text-3xl font-bold text-emerald-700 mt-2">{missingAfter}</div>
+            <div className="text-xs text-slate-500 mt-1">After applying the suggested edits</div>
+            {missingAfterList.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-1 text-[11px] text-emerald-800">
+                {missingAfterList.slice(0, 6).map((kw) => (
+                  <span key={kw} className="px-2 py-1 rounded-lg bg-white border border-emerald-100">{kw}</span>
+                ))}
+                {missingAfterList.length > 6 && (
+                  <span className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-500">
+                    +{missingAfterList.length - 6} more
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="mt-3 text-sm text-emerald-700 font-semibold">Nice! No missing keywords remain.</div>
+            )}
+          </div>
+          <div className="p-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="text-xs uppercase font-semibold text-slate-700">Improvement</div>
+            <div className="text-3xl font-bold text-slate-900 mt-2">-{delta}</div>
+            <div className="text-xs text-slate-500 mt-1">fewer missing keywords after the walkthrough</div>
+            <div className="mt-3 w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-amber-400 to-emerald-500 transition-all duration-700"
+                style={{ width: totalKeywords ? `${Math.min(100, (delta / Math.max(totalKeywords, 1)) * 100)}%` : '0%' }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Improved CV */}
+        <div className="text-left mb-8 bg-white border border-slate-200 rounded-3xl shadow-sm p-6">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-xs uppercase font-semibold text-slate-500">Improved CV draft</div>
+              <div className="text-slate-800 text-lg font-bold">After applying the suggested replacements</div>
+            </div>
+          </div>
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-64 overflow-auto text-sm text-slate-800 whitespace-pre-wrap font-mono">
+            {improvedCV || 'Your improved CV will appear here after applying the changes.'}
           </div>
         </div>
 
@@ -1043,7 +1158,7 @@ const LogConsole = ({ logs, onClear }) => {
 // MAIN PRESENTATION COMPONENT
 // ============================================
 
-const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice }) => {
+const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice, improvedCV, keywordSnapshot }) => {
   const [currentSlide, setCurrentSlide] = useState(-1);
   const [phase, setPhase] = useState('intro');
   const [isPlaying, setIsPlaying] = useState(false);
@@ -1053,6 +1168,7 @@ const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice })
   const timeoutRef = useRef(null);
 
   const newScore = Math.min(95, score + Math.round(changes.length * 5));
+  const isOutro = currentSlide === changes.length;
 
   const clearTimeouts = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -1185,7 +1301,7 @@ const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice })
   };
 
   return (
-    <div className="fixed inset-0 bg-white overflow-hidden text-slate-900">
+    <div className={`fixed inset-0 bg-white text-slate-900 ${isOutro ? 'overflow-y-auto' : 'overflow-hidden'}`}>
       
       <div className="relative w-full h-full">
         <IntroSlide 
@@ -1215,6 +1331,8 @@ const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice })
           totalChanges={changes.length}
           onRestart={handleRestart}
           onBack={onBack}
+          improvedCV={improvedCV || cvText}
+          keywordSnapshot={keywordSnapshot}
         />
       </div>
 
@@ -1687,6 +1805,8 @@ export default function App() {
   const [selectedVoice, setSelectedVoice] = useState('onyx');
   const [logs, setLogs] = useState([]);
   const [analysisProgress, setAnalysisProgress] = useState(null);
+  const [improvedCV, setImprovedCV] = useState('');
+  const [keywordSnapshot, setKeywordSnapshot] = useState(null);
 
   const addLogEntry = useCallback((entry) => {
     setLogs((prev) => {
@@ -1715,6 +1835,8 @@ export default function App() {
     setCvText(cv);
     setApiKey(key);
     setSelectedVoice(voice);
+    setImprovedCV(cv);
+    setKeywordSnapshot(null);
     setAnalysisProgress({
       stage: 'keywords',
       totalKeywords: null,
@@ -1730,8 +1852,19 @@ export default function App() {
           ...progressUpdate
         }));
       });
+      const { text: improvedText } = applySuggestionsToCV(cv, result.suggestions);
+      const missingAfter = computeMissingKeywordsAfter(result.validatedKeywords?.inJob, improvedText);
+
       setChanges(result.suggestions);
       setScore(result.score);
+      setImprovedCV(improvedText);
+      setKeywordSnapshot({
+        total: result.validatedKeywords?.inJob?.length || 0,
+        before: result.validatedKeywords?.missing?.length || 0,
+        after: missingAfter.length,
+        missingBeforeList: result.validatedKeywords?.missing || [],
+        missingAfterList: missingAfter
+      });
       setView('presentation');
       setAnalysisProgress(null);
     } catch (err) {
@@ -1746,6 +1879,8 @@ export default function App() {
     setView('input');
     setChanges([]);
     setAnalysisProgress(null);
+    setImprovedCV('');
+    setKeywordSnapshot(null);
   };
 
   const showPresentation = view === 'presentation' && changes.length > 0;
@@ -1760,6 +1895,8 @@ export default function App() {
           onBack={handleBack} 
           apiKey={apiKey}
           selectedVoice={selectedVoice}
+          improvedCV={improvedCV}
+          keywordSnapshot={keywordSnapshot}
         />
       ) : (
         <InputView onAnalyze={handleAnalyze} isLoading={isLoading} progress={analysisProgress} />
