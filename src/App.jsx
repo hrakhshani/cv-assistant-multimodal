@@ -129,7 +129,9 @@ Focus on:
 - Required qualifications and certifications
 
 Return ONLY a JSON array of keywords, nothing else:
-["keyword1", "keyword2", ...]
+
+VALID EXAMPLE:
+{"keywords":[list of extracted keywords]}
 
 JOB DESCRIPTION:
 ${jobDescription}`;
