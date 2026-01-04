@@ -220,7 +220,7 @@ const validateKeywords = (keywords, jobDescription, cvText) => {
   }));
 };
 
-const analyzeCV = async (cvText, jobDescription, apiKey, apiProvider = 'anthropic', onLog) => {
+const analyzeCV = async (cvText, jobDescription, apiKey, apiProvider = 'anthropic', onLog, onProgress) => {
   // Step 1: Extract keywords from job description
   const rawKeywords = await extractKeywords(jobDescription, apiKey, apiProvider, onLog);
   
@@ -230,6 +230,14 @@ const analyzeCV = async (cvText, jobDescription, apiKey, apiProvider = 'anthropi
   const keywordsInJob = validatedKeywords.filter(k => k.inJobDescription).map(k => k.keyword);
   const keywordsInCV = validatedKeywords.filter(k => k.inCV).map(k => k.keyword);
   const missingKeywords = validatedKeywords.filter(k => k.inJobDescription && !k.inCV).map(k => k.keyword);
+
+  onProgress?.({
+    stage: 'keywords',
+    totalKeywords: keywordsInJob.length,
+    matchedKeywords: keywordsInCV.length,
+    missingKeywords,
+    message: `Found ${keywordsInJob.length} validated keywords; ${missingKeywords.length} are missing from your CV.`
+  });
 
   // Step 3: Build enhanced analysis prompt
   const systemPrompt = `You are an expert CV analyst focused on ethical, honest CV improvements. Your role is to help job seekers present their genuine qualifications more effectively—not to fabricate or exaggerate.
@@ -302,6 +310,11 @@ Provide 5-10 high-impact suggestions. The "original" field MUST be an exact subs
   const combinedPrompt = apiProvider === 'anthropic'
     ? `${systemPrompt}\n\n${userMessage}`
     : `System:\n${systemPrompt}\n\nUser:\n${userMessage}`;
+
+  onProgress?.({
+    stage: 'generating',
+    message: 'Generating tailored corrections based on the validated keywords...'
+  });
 
   try {
     let content;
@@ -377,6 +390,11 @@ Provide 5-10 high-impact suggestions. The "original" field MUST be an exact subs
         };
       })
       .filter(Boolean);
+
+    onProgress?.({
+      stage: 'done',
+      message: 'Walkthrough ready with personalized corrections.'
+    });
 
     return {
       score: result.score || 50,
@@ -1290,13 +1308,25 @@ const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice })
 // INPUT VIEW
 // ============================================
 
-const InputView = ({ onAnalyze, isLoading }) => {
+const InputView = ({ onAnalyze, isLoading, progress }) => {
   const [cvText, setCvText] = useState('');
   const [jobDescription, setJobDescription] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [apiProvider, setApiProvider] = useState('openai');
   const [showApiKey, setShowApiKey] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState('onyx');
+  const progressStage = progress?.stage || (isLoading ? 'keywords' : 'idle');
+  const totalKeywords = typeof progress?.totalKeywords === 'number' ? progress.totalKeywords : null;
+  const matchedKeywords = typeof progress?.matchedKeywords === 'number' ? progress.matchedKeywords : null;
+  const missingKeywords = progress?.missingKeywords || [];
+  const missingPreview = missingKeywords.slice(0, 5);
+  const hasMoreMissing = missingKeywords.length > missingPreview.length;
+  const stageRank = { keywords: 1, generating: 2, done: 3 };
+  const currentStageRank = stageRank[progressStage] || 1;
+  const hasKeywordData = totalKeywords !== null || matchedKeywords !== null || missingKeywords.length > 0;
+  const isGenerating = currentStageRank >= 2;
+  const isDone = currentStageRank >= 3;
+  const statusMessage = progress?.message || 'Analyzing your CV and job description...';
 
   // Load saved settings
   useEffect(() => {
@@ -1314,6 +1344,135 @@ const InputView = ({ onAnalyze, isLoading }) => {
     localStorage.setItem('cv-coach-api-provider', apiProvider);
     localStorage.setItem('cv-coach-voice', selectedVoice);
   }, [apiKey, apiProvider, selectedVoice]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white px-6 py-10 flex items-center justify-center text-slate-900">
+        <div className="max-w-3xl w-full space-y-6">
+          <div className="text-center space-y-2">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-100 mx-auto">
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              <span className="text-sm font-semibold">Preparing your walkthrough</span>
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900">Analyzing your CV for this role</h1>
+            <p className="text-slate-500 text-sm">{statusMessage}</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className={`p-4 rounded-xl border ${currentStageRank >= 1 ? 'border-emerald-200 bg-emerald-50/70 shadow-sm' : 'border-slate-200 bg-white/70'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold flex items-center justify-center">1</span>
+                  <span className="text-[11px] uppercase tracking-wide font-semibold text-emerald-700">Valid keywords</span>
+                </div>
+                {isGenerating || isDone ? (
+                  <span className="text-emerald-600 text-lg">✓</span>
+                ) : (
+                  <svg className="w-4 h-4 text-emerald-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                )}
+              </div>
+              <p className="text-sm text-slate-700 mt-2">
+                {totalKeywords !== null
+                  ? `${totalKeywords} keywords pulled straight from the job description.`
+                  : 'Extracting the most important keywords from the job description...'}
+              </p>
+              {matchedKeywords !== null && totalKeywords ? (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between text-xs text-slate-600 mb-1">
+                    <span>{matchedKeywords} already in your CV</span>
+                    <span>{totalKeywords} total</span>
+                  </div>
+                  <div className="h-2 bg-white border border-emerald-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-400 to-teal-500"
+                      style={{ width: `${Math.min(100, (matchedKeywords / Math.max(totalKeywords, 1)) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 mt-2">Finding and validating each keyword...</p>
+              )}
+            </div>
+
+            <div className={`p-4 rounded-xl border ${currentStageRank >= 1 ? 'border-amber-200 bg-amber-50/70 shadow-sm' : 'border-slate-200 bg-white/70'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-full bg-amber-100 text-amber-700 text-xs font-bold flex items-center justify-center">2</span>
+                  <span className="text-[11px] uppercase tracking-wide font-semibold text-amber-700">Missing in CV</span>
+                </div>
+                {hasKeywordData ? (
+                  <span className="text-amber-700 text-xs font-semibold">{missingKeywords.length}</span>
+                ) : (
+                  <svg className="w-4 h-4 text-amber-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                )}
+              </div>
+              <p className="text-sm text-slate-700 mt-2">
+                {hasKeywordData
+                  ? 'Keywords in the job post that are missing from your CV:'
+                  : 'Checking which of those keywords are absent from your CV...'}
+              </p>
+              <div className="flex flex-wrap gap-1 mt-2">
+                {hasKeywordData && missingPreview.length === 0 && (
+                  <span className="text-xs text-emerald-700 font-semibold bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg">
+                    Nice—nothing missing.
+                  </span>
+                )}
+                {hasKeywordData && missingPreview.map((kw) => (
+                  <span key={kw} className="text-xs text-amber-800 font-semibold bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">
+                    {kw}
+                  </span>
+                ))}
+                {hasKeywordData && hasMoreMissing && (
+                  <span className="text-[11px] text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded-lg">
+                    +{missingKeywords.length - missingPreview.length} more
+                  </span>
+                )}
+                {!hasKeywordData && (
+                  <span className="text-xs text-slate-500">We’ll list the missing ones here.</span>
+                )}
+              </div>
+            </div>
+
+            <div className={`p-4 rounded-xl border ${isGenerating || isDone ? 'border-emerald-300 bg-gradient-to-br from-emerald-50 to-white shadow-sm' : 'border-slate-200 bg-white/70'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-full bg-sky-100 text-sky-700 text-xs font-bold flex items-center justify-center">3</span>
+                  <span className="text-[11px] uppercase tracking-wide font-semibold text-sky-700">Final step</span>
+                </div>
+                {isDone ? (
+                  <span className="text-emerald-600 text-lg">✓</span>
+                ) : (
+                  <svg className={`w-4 h-4 ${isGenerating ? 'text-emerald-500 animate-spin' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                )}
+              </div>
+              <p className="text-sm text-slate-700 mt-2">
+                {isGenerating || isDone
+                  ? 'Drafting your personalized corrections and walkthrough script.'
+                  : 'Once the keywords are set, we’ll draft the corrections.'}
+              </p>
+              <p className="text-xs text-slate-500 mt-1">{statusMessage}</p>
+            </div>
+          </div>
+
+          <div className="text-center text-xs text-slate-500">
+            This view will switch to the walkthrough as soon as the analysis finishes.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const sampleCV = `Hojjat Rakhshani
 
@@ -1497,6 +1656,7 @@ export default function App() {
   const [apiKey, setApiKey] = useState('');
   const [selectedVoice, setSelectedVoice] = useState('onyx');
   const [logs, setLogs] = useState([]);
+  const [analysisProgress, setAnalysisProgress] = useState(null);
 
   const addLogEntry = useCallback((entry) => {
     setLogs((prev) => {
@@ -1525,14 +1685,28 @@ export default function App() {
     setCvText(cv);
     setApiKey(key);
     setSelectedVoice(voice);
+    setAnalysisProgress({
+      stage: 'keywords',
+      totalKeywords: null,
+      matchedKeywords: null,
+      missingKeywords: [],
+      message: 'Scanning the job description for critical keywords...'
+    });
 
     try {
-      const result = await analyzeCV(cv, job, key, apiProvider, addLogEntry);
+      const result = await analyzeCV(cv, job, key, apiProvider, addLogEntry, (progressUpdate) => {
+        setAnalysisProgress((prev) => ({
+          ...(prev || {}),
+          ...progressUpdate
+        }));
+      });
       setChanges(result.suggestions);
       setScore(result.score);
       setView('presentation');
+      setAnalysisProgress(null);
     } catch (err) {
       setError(err.message || 'Analysis failed. Please check your API key and try again.');
+      setAnalysisProgress(null);
     } finally {
       setIsLoading(false);
     }
@@ -1541,6 +1715,7 @@ export default function App() {
   const handleBack = () => {
     setView('input');
     setChanges([]);
+    setAnalysisProgress(null);
   };
 
   const showPresentation = view === 'presentation' && changes.length > 0;
@@ -1557,7 +1732,7 @@ export default function App() {
           selectedVoice={selectedVoice}
         />
       ) : (
-        <InputView onAnalyze={handleAnalyze} isLoading={isLoading} />
+        <InputView onAnalyze={handleAnalyze} isLoading={isLoading} progress={analysisProgress} />
       )}
       {error && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-500/90 backdrop-blur-sm text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-3 max-w-lg">
