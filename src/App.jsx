@@ -1986,6 +1986,57 @@ const Presentation = ({
 // INPUT VIEW
 // ============================================
 
+const readPlainTextFile = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(new Error('Could not read the file.'));
+    reader.readAsText(file);
+  });
+
+const extractTextFromPdf = async (file) => {
+  const [{ getDocument, GlobalWorkerOptions }, workerModule] = await Promise.all([
+    import('pdfjs-dist'),
+    import('pdfjs-dist/build/pdf.worker.min.mjs')
+  ]);
+
+  if (GlobalWorkerOptions) {
+    const workerSrc =
+      typeof workerModule === 'string'
+        ? workerModule
+        : typeof workerModule?.default === 'string'
+          ? workerModule.default
+          : new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+    if (!GlobalWorkerOptions.workerSrc) {
+      GlobalWorkerOptions.workerSrc = workerSrc;
+    }
+  }
+
+  const pdfData = new Uint8Array(await file.arrayBuffer());
+  const pdf = await getDocument({ data: pdfData }).promise;
+  const pageTexts = [];
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const strings = content.items
+      .map((item) => (typeof item?.str === 'string' ? item.str : ''))
+      .filter(Boolean);
+    pageTexts.push(strings.join(' '));
+  }
+
+  pdf.cleanup?.();
+  pdf.destroy?.();
+
+  return pageTexts.join('\n\n');
+};
+
+const extractTextFromFile = async (file) => {
+  const isPdf = file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf');
+  if (isPdf) return extractTextFromPdf(file);
+  return readPlainTextFile(file);
+};
+
 const InputView = ({ onAnalyze, isLoading, progress }) => {
   const [cvText, setCvText] = useState('');
   const [jobDescription, setJobDescription] = useState('');
@@ -2010,6 +2061,9 @@ const InputView = ({ onAnalyze, isLoading, progress }) => {
   const missingDisplay = showAllMissing ? missingKeywords : missingPreview;
   const hasMoreMatched = matchedKeywordsList.length > 5;
   const matchedPreview = hasMoreMatched ? matchedKeywordsList.slice(0, 5) : matchedKeywordsList;
+  const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadError, setUploadError] = useState('');
+  const [isReadingFile, setIsReadingFile] = useState(false);
 
   // Load saved settings
   useEffect(() => {
@@ -2033,6 +2087,40 @@ const InputView = ({ onAnalyze, isLoading, progress }) => {
       setShowAllMissing(false);
     }
   }, [isLoading]);
+
+  const handleFileUpload = useCallback(
+    async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      setUploadError('');
+      setUploadStatus('Extracting text from file...');
+      setIsReadingFile(true);
+
+      try {
+        const maxSize = 8 * 1024 * 1024; // 8 MB safety cap
+        if (file.size > maxSize) {
+          throw new Error('File is too large. Please upload something under 8 MB.');
+        }
+
+        const rawText = await extractTextFromFile(file);
+        const normalized = rawText.replace(/\u00a0/g, ' ').trim();
+        if (!normalized) {
+          throw new Error('No readable text found in this file. Try another file.');
+        }
+        setCvText(normalized);
+        setUploadStatus(`${file.name} loaded. You can edit the text below.`);
+      } catch (err) {
+        console.error('File upload error:', err);
+        setUploadError(err.message || 'Could not read this file. Please try a different one.');
+        setUploadStatus('');
+      } finally {
+        event.target.value = '';
+        setIsReadingFile(false);
+      }
+    },
+    [setCvText]
+  );
 
   if (isLoading) {
     return (
@@ -2302,7 +2390,35 @@ Responsibilities:
           </div>
 
           <div>
-            <label className="block text-slate-700 text-sm font-semibold mb-2">Your CV / Resume</label>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <label className="block text-slate-700 text-sm font-semibold">Your CV / Resume</label>
+              <label className="relative inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 text-slate-700 border border-slate-200 hover:border-emerald-300 hover:text-emerald-800 transition cursor-pointer">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
+                </svg>
+                <span className="text-xs font-semibold">Upload PDF or TXT</span>
+                <input
+                  type="file"
+                  accept=".pdf,.txt,application/pdf,text/plain"
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                  onChange={handleFileUpload}
+                  disabled={isLoading || isReadingFile}
+                />
+              </label>
+            </div>
+            <p className="text-xs text-slate-500 mb-2">
+              We pull text locally from your file; nothing is sent until you start the walkthrough.
+            </p>
+            {uploadStatus && (
+              <div className="mb-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-2 rounded-xl">
+                {uploadStatus}
+              </div>
+            )}
+            {uploadError && (
+              <div className="mb-2 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 px-3 py-2 rounded-xl">
+                {uploadError}
+              </div>
+            )}
             <textarea
               value={cvText}
               onChange={(e) => setCvText(e.target.value)}
@@ -2321,7 +2437,7 @@ Responsibilities:
 
             <button
               onClick={handleSubmit}
-              disabled={!cvText.trim() || !jobDescription.trim() || !apiKey.trim() || isLoading}
+              disabled={!cvText.trim() || !jobDescription.trim() || !apiKey.trim() || isLoading || isReadingFile}
               className="px-8 py-4 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 disabled:from-slate-300 disabled:to-slate-400 text-white font-bold rounded-2xl shadow-lg shadow-emerald-100 disabled:shadow-none transition-all flex items-center gap-3"
             >
               {isLoading ? (
