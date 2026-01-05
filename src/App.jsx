@@ -841,7 +841,8 @@ const IntroSlide = ({
   isActive, 
   score, 
   totalChanges, 
-  onStart
+  onStart,
+  onViewRecommendations
 }) => {
   return (
     <div className={`absolute inset-0 flex items-center justify-center transition-all duration-700 ${isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
@@ -862,18 +863,26 @@ const IntroSlide = ({
         <div className="flex items-center justify-center gap-6 mb-10">
         </div>
 
-        <button
-          onClick={onStart}
-          className="px-8 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-lg rounded-2xl shadow-xl shadow-emerald-500/30 transition-all hover:scale-105 flex items-center gap-3 mx-auto"
-        >
-          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-            <polygon points="5,3 19,12 5,21" />
-          </svg>
-          Start Walkthrough
-        </button>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <button
+            onClick={onStart}
+            className="px-8 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-lg rounded-2xl shadow-xl shadow-emerald-500/30 transition-all hover:scale-105 flex items-center gap-3 mx-auto"
+          >
+            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+              <polygon points="5,3 19,12 5,21" />
+            </svg>
+            Start Walkthrough
+          </button>
+          <button
+            onClick={onViewRecommendations}
+            className="px-8 py-4 bg-white border border-emerald-200 hover:border-emerald-300 text-emerald-800 font-semibold text-lg rounded-2xl shadow-lg shadow-emerald-50 transition-all hover:-translate-y-0.5"
+          >
+            Review recommendations
+          </button>
+        </div>
 
         <p className="text-slate-500 text-sm mt-4">
-          Takes about {Math.ceil(totalChanges * 0.5)} minutes
+          Takes about {Math.ceil(totalChanges * 0.5)} minutes — or jump straight to the recommendation panel.
         </p>
       </div>
     </div>
@@ -1534,6 +1543,14 @@ const Presentation = ({
   
     setCurrentSlide(0);
   };
+  
+  const handleSkipToRecommendations = () => {
+    clearTimeouts();
+    stop();
+    setIsPlaying(false);
+    setPhase('intro');
+    setCurrentSlide(changes.length);
+  };
 
   const handlePause = () => {
     setIsPlaying(false);
@@ -1612,6 +1629,7 @@ const Presentation = ({
           score={score} 
           totalChanges={changes.length}
           onStart={handleStart}
+          onViewRecommendations={handleSkipToRecommendations}
         />
         
         {changes.map((change, idx) => (
@@ -1907,7 +1925,7 @@ const InputView = ({ onAnalyze, isLoading, progress }) => {
           </div>
 
           <div className="text-center text-xs text-slate-500">
-            This view will switch to the walkthrough as soon as the analysis finishes.
+            As soon as the analysis finishes, you can start the walkthrough or jump straight to the recommendations.
           </div>
         </div>
       </div>
