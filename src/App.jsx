@@ -960,7 +960,7 @@ const OutroSlide = ({
             value={editorValue ?? improvedCV ?? ''}
             onChange={(e) => onEditorChange?.(e.target.value)}
             spellCheck="false"
-            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-512 min-h-[260px] overflow-auto text-sm text-slate-800 font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-200 resize-y"
+            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-512 min-h-[260px] overflow-auto text-sm text-slate-800 font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-200 resize-y cv-editor-highlight"
             style={{ maxHeight: '512px' }}
             placeholder="Your improved CV will appear here after applying the changes."
           />
