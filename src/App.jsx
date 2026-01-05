@@ -907,7 +907,7 @@ const OutroSlide = ({
   editorValue,
   onEditorChange
 }) => {
-  if (!isActive) return null;
+  const [showAllMissingKeywords, setShowAllMissingKeywords] = useState(false);
 
   const totalKeywords = keywordSnapshot?.total || 0;
   const missingBefore = keywordSnapshot?.before || 0;
@@ -915,6 +915,14 @@ const OutroSlide = ({
   const missingAfterList = keywordSnapshot?.missingAfterList || [];
   const missingBeforeList = keywordSnapshot?.missingBeforeList || [];
   const delta = Math.max(0, missingBefore - missingAfter);
+  const visibleMissingAfter = showAllMissingKeywords ? missingAfterList : missingAfterList.slice(0, 6);
+  const hasExtraMissingAfter = missingAfterList.length > visibleMissingAfter.length;
+
+  useEffect(() => {
+    setShowAllMissingKeywords(false);
+  }, [missingAfter, missingBefore]);
+
+  if (!isActive) return null;
 
   return (
     <div className="space-y-6">
@@ -934,20 +942,76 @@ const OutroSlide = ({
           </div>
           {missingAfterList.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {missingAfterList.slice(0, 6).map((kw) => (
+              {visibleMissingAfter.map((kw) => (
                 <span key={kw} className="px-2 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-100 text-xs">
                   {kw}
                 </span>
               ))}
-              {missingAfterList.length > 6 && (
-                <span className="px-2 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200 text-xs">
-                  +{missingAfterList.length - 6} more
-                </span>
+              {(hasExtraMissingAfter || showAllMissingKeywords) && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllMissingKeywords((prev) => !prev)}
+                  className="px-2 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200 text-xs hover:border-emerald-300 hover:text-emerald-800 transition"
+                >
+                  {showAllMissingKeywords ? 'Hide list' : `+${missingAfterList.length - 6} more`}
+                </button>
               )}
             </div>
           )}
           {missingAfterList.length === 0 && (
             <div className="mt-3 text-sm font-semibold text-emerald-700">Nice—no missing keywords remain.</div>
+          )}
+          {showAllMissingKeywords && (
+            <div className="mt-4 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs uppercase font-semibold text-slate-600">Missing keywords detail</div>
+                <button
+                  type="button"
+                  onClick={() => setShowAllMissingKeywords(false)}
+                  className="text-xs font-semibold text-slate-600 hover:text-emerald-700 px-2 py-1 rounded-lg border border-slate-200 hover:border-emerald-200 transition"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3 mt-3">
+                <div>
+                  <div className="text-[11px] uppercase font-semibold text-slate-500 mb-2">
+                    Before your edits ({missingBeforeList.length})
+                  </div>
+                  {missingBeforeList.length === 0 ? (
+                    <div className="text-xs text-emerald-700 font-semibold bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg inline-block">
+                      Nothing was missing.
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {missingBeforeList.map((kw) => (
+                        <span key={kw} className="px-2 py-1 rounded-full bg-white border border-slate-200 text-xs text-slate-700">
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase font-semibold text-slate-500 mb-2">
+                    Still missing now ({missingAfterList.length})
+                  </div>
+                  {missingAfterList.length === 0 ? (
+                    <div className="text-xs text-emerald-700 font-semibold bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg inline-block">
+                      All covered—great job!
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {missingAfterList.map((kw) => (
+                        <span key={kw} className="px-2 py-1 rounded-full bg-amber-50 border border-amber-100 text-xs text-amber-800">
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </div>
