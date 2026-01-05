@@ -204,25 +204,35 @@ ${jobDescription}`;
   }
 };
 
-const validateKeywords = (keywords, jobDescription, cvText) => {
+const validateKeywords = (keywords = [], jobDescription = '', cvText = '') => {
   const jobDescLower = jobDescription.toLowerCase();
   const cvTextLower = cvText.toLowerCase();
-  
-  return keywords.filter(keyword => {
-    const keywordLower = keyword.toLowerCase();
-    const inJobDesc = jobDescLower.includes(keywordLower);
-    const inCV = cvTextLower.includes(keywordLower);
-    return inJobDesc; // Must appear in job description
-  }).map(keyword => ({
-    keyword,
-    inJobDescription: jobDescription.toLowerCase().includes(keyword.toLowerCase()),
-    inCV: cvText.toLowerCase().includes(keyword.toLowerCase())
-  }));
+  const seen = new Set();
+
+  return keywords
+    .map((keyword) => (typeof keyword === 'string' ? keyword.trim() : ''))
+    .filter(Boolean)
+    .filter((keyword) => {
+      const key = keyword.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((keyword) => {
+      const keywordLower = keyword.toLowerCase();
+      return {
+        keyword,
+        inJobDescription: jobDescLower.includes(keywordLower),
+        inCV: cvTextLower.includes(keywordLower)
+      };
+    });
 };
 
-const analyzeCV = async (cvText, jobDescription, apiKey, apiProvider = 'anthropic', onLog, onProgress) => {
-  // Step 1: Extract keywords from job description
-  const rawKeywords = await extractKeywords(jobDescription, apiKey, apiProvider, onLog);
+const analyzeCV = async (cvText, jobDescription, apiKey, apiProvider = 'anthropic', onLog, onProgress, providedKeywords = null) => {
+  // Step 1: Extract keywords from job description (or use user-confirmed list)
+  const rawKeywords = Array.isArray(providedKeywords) && providedKeywords.length > 0
+    ? providedKeywords
+    : await extractKeywords(jobDescription, apiKey, apiProvider, onLog);
   
   // Step 2: Validate keywords actually appear in the text
   const validatedKeywords = validateKeywords(rawKeywords, jobDescription, cvText);
@@ -1204,6 +1214,181 @@ const LogConsole = ({ logs, onClear }) => {
 };
 
 // ============================================
+// KEYWORD REVIEW MODAL
+// ============================================
+
+const KeywordReviewModal = ({
+  open,
+  keywords = [],
+  jobDescription = '',
+  cvText = '',
+  onClose,
+  onConfirm,
+  onKeywordsChange,
+  isSubmitting = false
+}) => {
+  const [draftKeyword, setDraftKeyword] = useState('');
+
+  const validated = useMemo(
+    () => validateKeywords(keywords, jobDescription, cvText),
+    [keywords, jobDescription, cvText]
+  );
+
+  const keywordsInJob = validated.filter((k) => k.inJobDescription).map((k) => k.keyword);
+  const keywordsInCV = validated.filter((k) => k.inCV).map((k) => k.keyword);
+  const missingInCV = validated.filter((k) => k.inJobDescription && !k.inCV).map((k) => k.keyword);
+  const notInJob = validated.filter((k) => !k.inJobDescription).map((k) => k.keyword);
+
+  if (!open) return null;
+
+  const handleAddKeyword = () => {
+    const candidate = draftKeyword.trim();
+    if (!candidate) return;
+    const exists = keywords.some((kw) => kw.toLowerCase() === candidate.toLowerCase());
+    if (exists) {
+      setDraftKeyword('');
+      return;
+    }
+    onKeywordsChange?.([...keywords, candidate]);
+    setDraftKeyword('');
+  };
+
+  const handleRemoveKeyword = (keyword) => {
+    onKeywordsChange?.(keywords.filter((kw) => kw !== keyword));
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddKeyword();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-slate-900/40 backdrop-blur-sm">
+      <div className="w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
+          <div>
+            <div className="text-xs uppercase font-semibold text-slate-500">Step 1 · Validate keywords</div>
+            <div className="text-lg font-bold text-slate-900">Confirm the terms we’ll optimize for</div>
+            <p className="text-sm text-slate-600">
+              Add missing terms from the job post or remove any noise before we draft your personalized changes.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-xl border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 transition"
+            aria-label="Close keyword review"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div className="grid sm:grid-cols-3 gap-3">
+            <div className="p-4 rounded-2xl border border-emerald-100 bg-emerald-50/70">
+              <div className="text-xs uppercase font-semibold text-emerald-700">Total keywords</div>
+              <div className="text-2xl font-bold text-emerald-900 mt-1">{validated.length}</div>
+              <div className="text-xs text-emerald-700 mt-1">Pulled from the job description</div>
+            </div>
+            <div className="p-4 rounded-2xl border border-sky-100 bg-sky-50/70">
+              <div className="text-xs uppercase font-semibold text-sky-700">Already in your CV</div>
+              <div className="text-2xl font-bold text-sky-900 mt-1">{keywordsInCV.length}</div>
+              <div className="text-xs text-sky-700 mt-1">These are covered</div>
+            </div>
+            <div className="p-4 rounded-2xl border border-amber-100 bg-amber-50/70">
+              <div className="text-xs uppercase font-semibold text-amber-700">Missing from CV</div>
+              <div className="text-2xl font-bold text-amber-900 mt-1">{missingInCV.length}</div>
+              <div className="text-xs text-amber-700 mt-1">We’ll prioritize these</div>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50">
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Add or edit keywords</label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                value={draftKeyword}
+                onChange={(e) => setDraftKeyword(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Add an important keyword from the job post"
+                className="flex-1 px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition"
+              />
+              <button
+                onClick={handleAddKeyword}
+                disabled={!draftKeyword.trim()}
+                className="px-5 py-3 rounded-xl bg-emerald-600 text-white font-semibold shadow-lg shadow-emerald-200 disabled:opacity-50 disabled:shadow-none transition"
+              >
+                Add keyword
+              </button>
+            </div>
+            {notInJob.length > 0 && (
+              <p className="text-xs text-amber-700 mt-2">
+                {notInJob.length} term{notInJob.length === 1 ? '' : 's'} aren’t in the job description; they’ll be deprioritized.
+              </p>
+            )}
+          </div>
+
+          <div className="max-h-72 overflow-y-auto p-4 rounded-2xl border border-slate-200 bg-white">
+            {validated.length === 0 ? (
+              <div className="text-sm text-slate-600">No keywords yet. Add the most important terms from the job post.</div>
+            ) : (
+              <div className="flex flex-wrap gap-3">
+                {validated.map((kw) => (
+                  <div
+                    key={kw.keyword}
+                    className="flex items-start gap-3 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 shadow-sm min-w-[240px]"
+                  >
+                    <div className="flex-1">
+                      <div className="text-sm font-semibold text-slate-900 break-words">{kw.keyword}</div>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap text-[11px]">
+                        <span className={`px-2 py-0.5 rounded-lg border ${kw.inJobDescription ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                          {kw.inJobDescription ? 'In job post' : 'Not in job post'}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-lg border ${kw.inCV ? 'bg-sky-50 text-sky-700 border-sky-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>
+                          {kw.inCV ? 'Already in CV' : 'Missing in CV'}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveKeyword(kw.keyword)}
+                      className="w-8 h-8 rounded-lg border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 transition"
+                      aria-label={`Remove ${kw.keyword}`}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 pt-2">
+            <div className="text-xs text-slate-500">
+              We’ll use only the confirmed keywords to align your CV with the job description.
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 hover:border-slate-400 transition"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => onConfirm?.(validated.map((k) => k.keyword))}
+                disabled={isSubmitting || validated.length === 0}
+                className="px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-semibold shadow-lg shadow-emerald-200 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-60 transition"
+              >
+                Continue with these keywords
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================
 // SUGGESTION REVIEW PANEL
 // ============================================
 
@@ -2171,6 +2356,7 @@ Responsibilities:
 export default function App() {
   const [view, setView] = useState('input');
   const [cvText, setCvText] = useState('');
+  const [jobDescription, setJobDescription] = useState('');
   const [changes, setChanges] = useState([]);
   const [score, setScore] = useState(50);
   const [isLoading, setIsLoading] = useState(false);
@@ -2185,6 +2371,9 @@ export default function App() {
   const [proposedKeywordSnapshot, setProposedKeywordSnapshot] = useState(null);
   const [suggestionDecisions, setSuggestionDecisions] = useState({});
   const [validatedKeywords, setValidatedKeywords] = useState(null);
+  const [pendingAnalysis, setPendingAnalysis] = useState(null);
+  const [keywordReviewOpen, setKeywordReviewOpen] = useState(false);
+  const [keywordDraft, setKeywordDraft] = useState([]);
 
   const addLogEntry = useCallback((entry) => {
     setLogs((prev) => {
@@ -2211,6 +2400,7 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     setCvText(cv);
+    setJobDescription(job);
     setApiKey(key);
     setSelectedVoice(voice);
     setImprovedCV(cv);
@@ -2219,6 +2409,9 @@ export default function App() {
     setProposedKeywordSnapshot(null);
     setSuggestionDecisions({});
     setValidatedKeywords(null);
+    setPendingAnalysis({ cv, job, key, apiProvider, voice });
+    setKeywordDraft([]);
+    setKeywordReviewOpen(false);
     setAnalysisProgress({
       stage: 'keywords',
       totalKeywords: null,
@@ -2228,12 +2421,80 @@ export default function App() {
     });
 
     try {
-      const result = await analyzeCV(cv, job, key, apiProvider, addLogEntry, (progressUpdate) => {
-        setAnalysisProgress((prev) => ({
-          ...(prev || {}),
-          ...progressUpdate
-        }));
+      const extractedKeywords = await extractKeywords(job, key, apiProvider, addLogEntry);
+      const validatedList = validateKeywords(extractedKeywords, job, cv);
+
+      setKeywordDraft(validatedList.map((k) => k.keyword));
+      setKeywordReviewOpen(true);
+      setAnalysisProgress({
+        stage: 'keywords',
+        totalKeywords: validatedList.length,
+        matchedKeywords: validatedList.filter((k) => k.inCV).length,
+        matchedKeywordsList: validatedList.filter((k) => k.inCV).map((k) => k.keyword),
+        missingKeywords: validatedList
+          .filter((k) => k.inJobDescription && !k.inCV)
+          .map((k) => k.keyword),
+        message: 'Confirm, add, or remove keywords before we draft your improvements.'
       });
+    } catch (err) {
+      setError(err.message || 'Keyword extraction failed. Please check your API key and try again.');
+      setAnalysisProgress(null);
+      setPendingAnalysis(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleConfirmKeywords = async (finalKeywords) => {
+    if (!pendingAnalysis) return;
+
+    const { cv, job, key, apiProvider, voice } = pendingAnalysis;
+    const cleaned = validateKeywords(
+      Array.isArray(finalKeywords) && finalKeywords.length > 0 ? finalKeywords : keywordDraft,
+      job,
+      cv
+    );
+    const keywordList = cleaned.map((k) => k.keyword);
+    const matchedList = cleaned.filter((k) => k.inCV).map((k) => k.keyword);
+    const missingList = cleaned.filter((k) => k.inJobDescription && !k.inCV).map((k) => k.keyword);
+
+    addLogEntry({
+      stage: 'keywords',
+      provider: apiProvider,
+      model: 'user-confirmed',
+      prompt: 'User confirmed keyword list',
+      response: JSON.stringify(keywordList),
+      status: 'success'
+    });
+
+    setKeywordReviewOpen(false);
+    setIsLoading(true);
+    setSelectedVoice(voice);
+    setAnalysisProgress({
+      stage: 'keywords',
+      totalKeywords: keywordList.length,
+      matchedKeywords: matchedList.length,
+      matchedKeywordsList: matchedList,
+      missingKeywords: missingList,
+      message: 'Validating your keywords and drafting personalized recommendations...'
+    });
+
+    try {
+      const result = await analyzeCV(
+        cv,
+        job,
+        key,
+        apiProvider,
+        addLogEntry,
+        (progressUpdate) => {
+          setAnalysisProgress((prev) => ({
+            ...(prev || {}),
+            ...progressUpdate
+          }));
+        },
+        keywordList
+      );
+
       setChanges(result.suggestions);
       setScore(result.score);
       setSuggestionDecisions(
@@ -2259,7 +2520,14 @@ export default function App() {
       setAnalysisProgress(null);
     } finally {
       setIsLoading(false);
+      setPendingAnalysis(null);
     }
+  };
+
+  const handleCancelKeywordReview = () => {
+    setKeywordReviewOpen(false);
+    setPendingAnalysis(null);
+    setAnalysisProgress(null);
   };
 
   const handleBack = () => {
@@ -2272,6 +2540,10 @@ export default function App() {
     setProposedKeywordSnapshot(null);
     setSuggestionDecisions({});
     setValidatedKeywords(null);
+    setKeywordReviewOpen(false);
+    setPendingAnalysis(null);
+    setKeywordDraft([]);
+    setJobDescription('');
   };
 
   useEffect(() => {
@@ -2345,6 +2617,16 @@ export default function App() {
       ) : (
         <InputView onAnalyze={handleAnalyze} isLoading={isLoading} progress={analysisProgress} />
       )}
+      <KeywordReviewModal
+        open={keywordReviewOpen}
+        keywords={keywordDraft}
+        jobDescription={jobDescription}
+        cvText={cvText}
+        onClose={handleCancelKeywordReview}
+        onConfirm={handleConfirmKeywords}
+        onKeywordsChange={setKeywordDraft}
+        isSubmitting={isLoading}
+      />
       {error && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-500/90 backdrop-blur-sm text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-3 max-w-lg">
           <span>⚠️</span>
