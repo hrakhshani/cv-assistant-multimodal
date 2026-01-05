@@ -893,7 +893,10 @@ const OutroSlide = ({
   onBack,
   improvedCV,
   keywordSnapshot,
-  onApplyAll
+  onApplyAll,
+  editorRef,
+  editorValue,
+  onEditorChange
 }) => {
   if (!isActive) return null;
 
@@ -951,8 +954,19 @@ const OutroSlide = ({
             Applied suggestions are highlighted in the panel
           </div>
         </div>
-        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-512 overflow-auto text-sm text-slate-800 whitespace-pre-wrap font-mono mt-4">
-          {improvedCV || 'Your improved CV will appear here after applying the changes.'}
+        <div className="mt-4">
+          <textarea
+            ref={editorRef}
+            value={editorValue ?? improvedCV ?? ''}
+            onChange={(e) => onEditorChange?.(e.target.value)}
+            spellCheck="false"
+            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-512 min-h-[260px] overflow-auto text-sm text-slate-800 font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-200 resize-y"
+            style={{ maxHeight: '512px' }}
+            placeholder="Your improved CV will appear here after applying the changes."
+          />
+          <div className="text-xs text-slate-500 mt-2">
+            Tip: click any modification to jump to that spot in the editor and see the exact wording.
+          </div>
         </div>
       </div>
 
@@ -1127,6 +1141,7 @@ const SuggestionReviewPanel = ({
   decisions = {},
   onDecisionChange,
   onApplyAll,
+  onSelectChange,
   variant = 'modal'
 }) => {
   if (!open) return null;
@@ -1200,7 +1215,19 @@ const SuggestionReviewPanel = ({
           const badgeStyle = categoryStyles[change.type] || categoryStyles.clarity;
 
           return (
-            <div key={change.id} className="border border-slate-200 rounded-2xl p-4 shadow-sm">
+            <div
+              key={change.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelectChange?.(change)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelectChange?.(change);
+                }
+              }}
+              className="border border-slate-200 rounded-2xl p-4 shadow-sm cursor-pointer transition hover:border-emerald-200 hover:shadow-md"
+            >
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${badgeStyle.gradient}`} />
@@ -1234,7 +1261,10 @@ const SuggestionReviewPanel = ({
 
               <div className="mt-3 flex items-center gap-2 flex-wrap">
                 <button
-                  onClick={() => onDecisionChange(change.id, decision === 'accepted' ? 'pending' : 'accepted')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDecisionChange(change.id, decision === 'accepted' ? 'pending' : 'accepted');
+                  }}
                   className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
                     decision === 'accepted'
                       ? 'bg-emerald-500 text-white shadow-sm'
@@ -1244,7 +1274,10 @@ const SuggestionReviewPanel = ({
                   {decision === 'accepted' ? 'Accepted' : 'Accept'}
                 </button>
                 <button
-                  onClick={() => onDecisionChange(change.id, 'skipped')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDecisionChange(change.id, 'skipped');
+                  }}
                   className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${
                     decision === 'skipped'
                       ? 'bg-amber-500 text-white border-amber-500'
@@ -1254,7 +1287,10 @@ const SuggestionReviewPanel = ({
                   Skip
                 </button>
                 <button
-                  onClick={() => onDecisionChange(change.id, 'rejected')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDecisionChange(change.id, 'rejected');
+                  }}
                   className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${
                     decision === 'rejected'
                       ? 'bg-rose-500 text-white border-rose-500'
@@ -1265,7 +1301,10 @@ const SuggestionReviewPanel = ({
                 </button>
                 {decision !== 'pending' && (
                   <button
-                    onClick={() => onDecisionChange(change.id, 'pending')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDecisionChange(change.id, 'pending');
+                    }}
                     className="px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition"
                   >
                     Clear
@@ -1325,9 +1364,11 @@ const Presentation = ({
   const [phase, setPhase] = useState('intro');
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
+  const [editorValue, setEditorValue] = useState(improvedCV || '');
   
   const { playTransition, playHighlight, speak, prefetchSpeech, stop, isSpeaking, isLoading } = useAudioSystem(apiKey);
   const timeoutRef = useRef(null);
+  const editorRef = useRef(null);
 
   const newScore = Math.min(95, score + Math.round(changes.length * 5));
   const isOutro = currentSlide === changes.length;
@@ -1335,6 +1376,10 @@ const Presentation = ({
   const clearTimeouts = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
   };
+
+  useEffect(() => {
+    setEditorValue(improvedCV || '');
+  }, [improvedCV]);
 
   const runSlideSequence = useCallback((slideIndex) => {
     if (slideIndex < 0 || slideIndex >= changes.length) return;
@@ -1433,6 +1478,57 @@ const Presentation = ({
     };
   }, [stop]);
 
+  const handleJumpToChange = useCallback((change) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const text = editor.value || '';
+    if (!text) return;
+
+    const decision = decisions[change.id] || 'pending';
+    const useReplacement = decision !== 'rejected' && decision !== 'skipped';
+    const candidates = [];
+
+    if (useReplacement && change.replacement) candidates.push(change.replacement);
+    if (change.original) candidates.push(change.original);
+    if (!useReplacement && change.replacement) candidates.push(change.replacement);
+
+    let matchIndex = -1;
+    let matchText = '';
+
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const idx = text.indexOf(candidate);
+      if (idx !== -1) {
+        matchIndex = idx;
+        matchText = candidate;
+        break;
+      }
+    }
+
+    if (matchIndex === -1 && typeof change.startIndex === 'number') {
+      matchIndex = Math.max(0, Math.min(change.startIndex, Math.max(text.length - 1, 0)));
+      matchText = change.original || change.replacement || '';
+    }
+
+    if (matchIndex === -1) return;
+
+    const selectionEnd = Math.min(matchIndex + (matchText?.length || 0), text.length);
+
+    requestAnimationFrame(() => {
+      editor.focus();
+      editor.setSelectionRange(matchIndex, Math.max(matchIndex, selectionEnd));
+
+      const totalLines = Math.max(text.split('\n').length, 1);
+      const lineNumber = text.slice(0, matchIndex).split('\n').length;
+      const ratio = (lineNumber - 1) / totalLines;
+      const targetScroll = ratio * Math.max(editor.scrollHeight - editor.clientHeight, 0);
+      if (!Number.isNaN(targetScroll)) {
+        editor.scrollTop = targetScroll;
+      }
+    });
+  }, [decisions]);
+
   const handleStart = () => {
     setIsPlaying(true);
   
@@ -1485,6 +1581,9 @@ const Presentation = ({
                 improvedCV={improvedCV || cvText}
                 keywordSnapshot={keywordSnapshot}
                 onApplyAll={onApplyAll}
+                editorRef={editorRef}
+                editorValue={editorValue}
+                onEditorChange={setEditorValue}
               />
             </div>
           </div>
@@ -1496,6 +1595,7 @@ const Presentation = ({
               decisions={decisions}
               onDecisionChange={onDecisionChange}
               onApplyAll={onApplyAll}
+              onSelectChange={handleJumpToChange}
             />
           </div>
         </div>
