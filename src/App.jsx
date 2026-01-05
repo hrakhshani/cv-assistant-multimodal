@@ -837,7 +837,12 @@ const PresentationSlide = ({
 // INTRO SLIDE
 // ============================================
 
-const IntroSlide = ({ isActive, score, totalChanges, onStart }) => {
+const IntroSlide = ({ 
+  isActive, 
+  score, 
+  totalChanges, 
+  onStart
+}) => {
   return (
     <div className={`absolute inset-0 flex items-center justify-center transition-all duration-700 ${isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
       <div className="text-center max-w-2xl px-8">
@@ -868,7 +873,7 @@ const IntroSlide = ({ isActive, score, totalChanges, onStart }) => {
         </button>
 
         <p className="text-slate-500 text-sm mt-4">
-          🔊 OpenAI TTS narration • Takes about {Math.ceil(totalChanges * 0.5)} minutes
+          Takes about {Math.ceil(totalChanges * 0.5)} minutes
         </p>
       </div>
     </div>
@@ -887,8 +892,11 @@ const OutroSlide = ({
   onRestart, 
   onBack,
   improvedCV,
-  keywordSnapshot
+  keywordSnapshot,
+  onApplyAll
 }) => {
+  if (!isActive) return null;
+
   const totalKeywords = keywordSnapshot?.total || 0;
   const missingBefore = keywordSnapshot?.before || 0;
   const missingAfter = keywordSnapshot?.after || 0;
@@ -897,122 +905,119 @@ const OutroSlide = ({
   const delta = Math.max(0, missingBefore - missingAfter);
 
   return (
-    <div className={`absolute inset-0 flex items-center justify-center transition-all duration-700 ${isActive ? 'opacity-100 overflow-y-auto py-10' : 'opacity-0 pointer-events-none'}`}>
-      <div className="text-center max-w-4xl px-8">
-        
-        {/* Success animation */}
-        <div className="mb-8">
-          <div className="w-32 h-32 mx-auto rounded-full flex items-center justify-center shadow-2xl shadow-emerald-100 animate-pulse">
-            <svg className="w-16 h-16 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    <div className="space-y-6">
+      <div className="bg-gradient-to-br from-white to-emerald-50 border border-emerald-100 rounded-3xl p-6 shadow-sm">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-[0.08em]">Walkthrough complete</p>
+            <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 mt-2">Review and apply the {totalChanges} changes</h1>
+            <p className="text-slate-600 mt-2">
+              Score lifted from <span className="font-semibold text-slate-900">{score}%</span> to <span className="font-semibold text-emerald-700">{newScore}%</span>.
+              Your edits sit on the right—accept or reject them in one place.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl bg-white border border-emerald-100 px-4 py-3 shadow-sm">
+              <div className="text-xs text-slate-500 uppercase font-semibold">Projected match</div>
+              <div className="flex items-baseline gap-2 mt-1">
+                <span className="text-3xl font-bold text-emerald-700">{newScore}%</span>
+                <span className="text-sm text-slate-500">was {score}%</span>
+              </div>
+            </div>
+            <button
+              onClick={onApplyAll}
+              className="px-4 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-lg shadow-emerald-200 transition"
+            >
+              Apply all changes
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+          <div className="text-xs uppercase font-semibold text-slate-500">Match score</div>
+          <div className="flex items-center gap-4 mt-3">
+            <div className="flex-1">
+              <div className="text-3xl font-bold text-slate-900">{score}%</div>
+              <div className="text-xs text-slate-500 mt-1">Before walkthrough</div>
+            </div>
+            <svg className="w-6 h-6 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
             </svg>
-          </div>
-        </div>
-
-        <h1 className="text-5xl font-bold text-slate-900 mb-4">
-          Walkthrough Complete! 🎉
-        </h1>
-        
-        <p className="text-xl text-slate-600 mb-8">
-          Apply these <span className="text-emerald-600 font-bold">{totalChanges} changes</span> to transform your CV
-        </p>
-
-        {/* Score comparison */}
-        <div className="flex items-center justify-center gap-8 mb-10">
-          <div className="text-center">
-            <div className="text-4xl font-bold text-slate-500">{score}%</div>
-            <div className="text-slate-400 text-sm">Before</div>
-          </div>
-          <svg className="w-8 h-8 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-          </svg>
-          <div className="text-center">
-            <div className="text-5xl font-bold text-emerald-600">{newScore}%</div>
-            <div className="text-emerald-500 text-sm">Projected</div>
-          </div>
-        </div>
-
-        {/* Keyword coverage delta */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10 text-left">
-          <div className="p-4 rounded-2xl border border-amber-100 bg-amber-50/60 shadow-sm">
-            <div className="text-xs uppercase font-semibold text-amber-700">Missing keywords (before)</div>
-            <div className="text-3xl font-bold text-amber-700 mt-2">{missingBefore}</div>
-            <div className="text-xs text-slate-500 mt-1">{totalKeywords} total from the job description</div>
-            {missingBeforeList.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1 text-[11px] text-amber-800">
-                {missingBeforeList.slice(0, 6).map((kw) => (
-                  <span key={kw} className="px-2 py-1 rounded-lg bg-white border border-amber-100">{kw}</span>
-                ))}
-                {missingBeforeList.length > 6 && (
-                  <span className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-500">
-                    +{missingBeforeList.length - 6} more
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="p-4 rounded-2xl border border-emerald-100 bg-emerald-50/60 shadow-sm">
-            <div className="text-xs uppercase font-semibold text-emerald-700">Missing keywords (after)</div>
-            <div className="text-3xl font-bold text-emerald-700 mt-2">{missingAfter}</div>
-            <div className="text-xs text-slate-500 mt-1">After applying the suggested edits</div>
-            {missingAfterList.length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-1 text-[11px] text-emerald-800">
-                {missingAfterList.slice(0, 6).map((kw) => (
-                  <span key={kw} className="px-2 py-1 rounded-lg bg-white border border-emerald-100">{kw}</span>
-                ))}
-                {missingAfterList.length > 6 && (
-                  <span className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-500">
-                    +{missingAfterList.length - 6} more
-                  </span>
-                )}
-              </div>
-            ) : (
-              <div className="mt-3 text-sm text-emerald-700 font-semibold">Nice! No missing keywords remain.</div>
-            )}
-          </div>
-          <div className="p-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="text-xs uppercase font-semibold text-slate-700">Improvement</div>
-            <div className="text-3xl font-bold text-slate-900 mt-2">-{delta}</div>
-            <div className="text-xs text-slate-500 mt-1">fewer missing keywords after the walkthrough</div>
-            <div className="mt-3 w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-amber-400 to-emerald-500 transition-all duration-700"
-                style={{ width: totalKeywords ? `${Math.min(100, (delta / Math.max(totalKeywords, 1)) * 100)}%` : '0%' }}
-              />
+            <div className="flex-1">
+              <div className="text-3xl font-bold text-emerald-700">{newScore}%</div>
+              <div className="text-xs text-slate-500 mt-1">Projected after</div>
             </div>
           </div>
         </div>
-
-        {/* Improved CV */}
-        <div className="text-left mb-8 bg-white border border-slate-200 rounded-3xl shadow-sm p-6">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <div className="text-xs uppercase font-semibold text-slate-500">Improved CV draft</div>
-              <div className="text-slate-800 text-lg font-bold">After applying the suggested replacements</div>
+        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+          <div className="text-xs uppercase font-semibold text-slate-500">Keywords covered</div>
+          <div className="flex items-center gap-4 mt-3">
+            <div className="flex-1">
+              <div className="text-lg font-semibold text-slate-900">{totalKeywords} total</div>
+              <div className="text-xs text-slate-500 mt-1">From the job description</div>
+            </div>
+            <div className="flex-1">
+              <div className="text-lg font-semibold text-amber-700">{missingBefore} missing → {missingAfter}</div>
+              <div className="text-xs text-slate-500 mt-1">Before vs. after your edits</div>
             </div>
           </div>
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-64 overflow-auto text-sm text-slate-800 whitespace-pre-wrap font-mono">
-            {improvedCV || 'Your improved CV will appear here after applying the changes.'}
+          {missingAfterList.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {missingAfterList.slice(0, 6).map((kw) => (
+                <span key={kw} className="px-2 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-100 text-xs">
+                  {kw}
+                </span>
+              ))}
+              {missingAfterList.length > 6 && (
+                <span className="px-2 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200 text-xs">
+                  +{missingAfterList.length - 6} more
+                </span>
+              )}
+            </div>
+          )}
+          {missingAfterList.length === 0 && (
+            <div className="mt-3 text-sm font-semibold text-emerald-700">Nice—no missing keywords remain.</div>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-xs uppercase font-semibold text-slate-500">Proposed CV draft</div>
+            <div className="text-slate-900 text-lg font-bold">Walkthrough version you can accept or ignore</div>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            Applied suggestions are highlighted in the panel
           </div>
         </div>
-
-        <div className="flex items-center justify-center gap-4">
-          <button
-            onClick={onBack}
-            className="px-6 py-3 bg-white border border-emerald-100 hover:border-emerald-200 text-slate-700 font-semibold rounded-xl transition-all shadow-sm"
-          >
-            ← Analyze Another CV
-          </button>
-          <button
-            onClick={onRestart}
-            className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white font-semibold rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-emerald-100"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Watch Again
-          </button>
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-72 overflow-auto text-sm text-slate-800 whitespace-pre-wrap font-mono mt-4">
+          {improvedCV || 'Your improved CV will appear here after applying the changes.'}
         </div>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <button
+          onClick={onApplyAll}
+          className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-lg shadow-emerald-200 transition"
+        >
+          Apply all changes
+        </button>
+        <button
+          onClick={onRestart}
+          className="px-5 py-3 rounded-xl border border-slate-300 text-slate-800 hover:border-emerald-300 hover:text-emerald-800 transition"
+        >
+          Watch walkthrough again
+        </button>
+        <button
+          onClick={onBack}
+          className="px-5 py-3 rounded-xl border border-slate-300 text-slate-700 hover:border-slate-400 transition"
+        >
+          Analyze another CV
+        </button>
       </div>
     </div>
   );
@@ -1155,10 +1160,210 @@ const LogConsole = ({ logs, onClear }) => {
 };
 
 // ============================================
+// SUGGESTION REVIEW PANEL
+// ============================================
+
+const SuggestionReviewPanel = ({
+  open,
+  onClose,
+  suggestions = [],
+  decisions = {},
+  onDecisionChange,
+  onApplyAll,
+  variant = 'modal'
+}) => {
+  if (!open) return null;
+
+  const isInline = variant === 'inline';
+  const panelWidth = isInline ? 'w-full' : 'w-full max-w-xl';
+  const panelHeight = isInline ? 'max-h-[calc(100vh-3rem)]' : 'h-full';
+  const panelClasses = isInline
+    ? `${panelWidth} ${panelHeight} bg-white border border-slate-200 rounded-2xl shadow-xl flex flex-col overflow-hidden`
+    : `${panelWidth} h-full bg-white border-l border-slate-200 shadow-2xl flex flex-col`;
+
+  const decisionOrder = { accepted: 0, pending: 1, skipped: 2, rejected: 3 };
+  const importanceOrder = { high: 0, medium: 1, low: 2 };
+
+  const acceptedCount = suggestions.filter((s) => decisions[s.id] === 'accepted').length;
+  const skippedCount = suggestions.filter((s) => decisions[s.id] === 'skipped').length;
+  const rejectedCount = suggestions.filter((s) => decisions[s.id] === 'rejected').length;
+  const pendingCount = Math.max(0, suggestions.length - acceptedCount - skippedCount - rejectedCount);
+
+  const sorted = [...suggestions].sort((a, b) => {
+    const decisionRankA = decisionOrder[decisions[a.id] || 'pending'];
+    const decisionRankB = decisionOrder[decisions[b.id] || 'pending'];
+    if (decisionRankA !== decisionRankB) return decisionRankA - decisionRankB;
+
+    const importanceRankA = importanceOrder[a.importance] ?? 3;
+    const importanceRankB = importanceOrder[b.importance] ?? 3;
+    if (importanceRankA !== importanceRankB) return importanceRankA - importanceRankB;
+
+    return (a.title || '').localeCompare(b.title || '');
+  });
+
+  const decisionStyles = {
+    accepted: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    skipped: 'bg-amber-50 text-amber-700 border-amber-200',
+    rejected: 'bg-rose-50 text-rose-700 border-rose-200',
+    pending: 'bg-slate-50 text-slate-600 border-slate-200'
+  };
+
+  const panelContent = (
+    <div className={panelClasses}>
+      <div className="p-5 border-b border-slate-200 flex items-center justify-between">
+        <div>
+          <div className="text-xs uppercase font-semibold text-slate-500">Recommended modifications</div>
+          <div className="text-lg font-bold text-slate-900">
+            {acceptedCount} accepted · {pendingCount} pending · {skippedCount} skipped · {rejectedCount} rejected
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onApplyAll}
+            className="px-3 py-2 rounded-lg bg-emerald-500 text-white text-sm font-semibold shadow-sm hover:bg-emerald-600 transition"
+          >
+            Apply all of them
+          </button>
+          {!isInline && (
+            <button
+              onClick={onClose}
+              className="w-9 h-9 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700"
+              aria-label="Close review panel"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="p-4 overflow-y-auto space-y-3">
+        {sorted.map((change) => {
+          const decision = decisions[change.id] || 'pending';
+          const style = decisionStyles[decision];
+          const badgeStyle = categoryStyles[change.type] || categoryStyles.clarity;
+
+          return (
+            <div key={change.id} className="border border-slate-200 rounded-2xl p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${badgeStyle.gradient}`} />
+                  <span className="text-xs font-semibold uppercase text-slate-600">{badgeStyle.label}</span>
+                  {change.importance && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-slate-600">
+                      {change.importance} priority
+                    </span>
+                  )}
+                </div>
+                <span className={`text-[11px] px-2 py-1 rounded-lg border ${style}`}>
+                  {decision === 'pending' ? 'Pending' : decision.charAt(0).toUpperCase() + decision.slice(1)}
+                </span>
+              </div>
+
+              <div className="mb-2">
+                <div className="text-sm font-semibold text-slate-900">{change.title}</div>
+                <p className="text-sm text-slate-600 mt-1">{change.description}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-100">
+                  <div className="text-[11px] uppercase font-semibold text-rose-700 mb-1">Original</div>
+                  <div className="text-rose-800">{change.original}</div>
+                </div>
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100">
+                  <div className="text-[11px] uppercase font-semibold text-emerald-700 mb-1">Replacement</div>
+                  <div className="text-emerald-900 font-medium">{change.replacement}</div>
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => onDecisionChange(change.id, decision === 'accepted' ? 'pending' : 'accepted')}
+                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
+                    decision === 'accepted'
+                      ? 'bg-emerald-500 text-white shadow-sm'
+                      : 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                  }`}
+                >
+                  {decision === 'accepted' ? 'Accepted' : 'Accept'}
+                </button>
+                <button
+                  onClick={() => onDecisionChange(change.id, 'skipped')}
+                  className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${
+                    decision === 'skipped'
+                      ? 'bg-amber-500 text-white border-amber-500'
+                      : 'bg-white border-amber-200 text-amber-700 hover:bg-amber-50'
+                  }`}
+                >
+                  Skip
+                </button>
+                <button
+                  onClick={() => onDecisionChange(change.id, 'rejected')}
+                  className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${
+                    decision === 'rejected'
+                      ? 'bg-rose-500 text-white border-rose-500'
+                      : 'bg-white border-rose-200 text-rose-700 hover:bg-rose-50'
+                  }`}
+                >
+                  Reject
+                </button>
+                {decision !== 'pending' && (
+                  <button
+                    onClick={() => onDecisionChange(change.id, 'pending')}
+                    className="px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {sorted.length === 0 && (
+          <div className="border border-slate-200 rounded-xl p-4 text-sm text-slate-600 bg-slate-50">
+            No suggestions available yet. Run an analysis to populate this list.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  if (isInline) {
+    return (
+      <div className={`${panelHeight} sticky top-4`}>
+        {panelContent}
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div
+        className="flex-1 bg-slate-900/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      {panelContent}
+    </div>
+  );
+};
+
+// ============================================
 // MAIN PRESENTATION COMPONENT
 // ============================================
 
-const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice, improvedCV, keywordSnapshot }) => {
+const Presentation = ({ 
+  cvText, 
+  changes, 
+  score, 
+  onBack, 
+  apiKey, 
+  selectedVoice, 
+  improvedCV, 
+  keywordSnapshot,
+  decisions,
+  onDecisionChange,
+  onApplyAll
+}) => {
   const [currentSlide, setCurrentSlide] = useState(-1);
   const [phase, setPhase] = useState('intro');
   const [isPlaying, setIsPlaying] = useState(false);
@@ -1258,6 +1463,13 @@ const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice, i
   }, [currentSlide, runSlideSequence]);
 
   useEffect(() => {
+    if (currentSlide >= changes.length) {
+      setIsPlaying(false);
+      setPhase('intro');
+    }
+  }, [currentSlide, changes.length]);
+
+  useEffect(() => {
     return () => {
       clearTimeouts();
       stop();
@@ -1300,9 +1512,43 @@ const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice, i
     setIsPlaying(false);
   };
 
+  if (isOutro) {
+    return (
+      <div className="fixed inset-0 bg-slate-50 text-slate-900">
+        <div className="flex h-full gap-4 px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex-1 min-w-0 overflow-y-auto pr-1">
+            <div className="max-w-5xl w-full mx-auto space-y-6 pb-10">
+              <OutroSlide
+                isActive
+                score={score}
+                newScore={newScore}
+                totalChanges={changes.length}
+                onRestart={handleRestart}
+                onBack={onBack}
+                improvedCV={improvedCV || cvText}
+                keywordSnapshot={keywordSnapshot}
+                onApplyAll={onApplyAll}
+              />
+            </div>
+          </div>
+          <div className="w-[320px] sm:w-[360px] lg:w-[420px] overflow-y-auto pl-1">
+            <SuggestionReviewPanel
+              open
+              variant="inline"
+              suggestions={changes}
+              decisions={decisions}
+              onDecisionChange={onDecisionChange}
+              onApplyAll={onApplyAll}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`fixed inset-0 bg-white text-slate-900 ${isOutro ? 'overflow-y-auto' : 'overflow-hidden'}`}>
-      
+    <div className="fixed inset-0 bg-white text-slate-900 overflow-hidden">
+
       <div className="relative w-full h-full">
         <IntroSlide 
           isActive={currentSlide === -1} 
@@ -1323,17 +1569,6 @@ const Presentation = ({ cvText, changes, score, onBack, apiKey, selectedVoice, i
             cvText={cvText}
           />
         ))}
-
-        <OutroSlide
-          isActive={currentSlide === changes.length}
-          score={score}
-          newScore={newScore}
-          totalChanges={changes.length}
-          onRestart={handleRestart}
-          onBack={onBack}
-          improvedCV={improvedCV || cvText}
-          keywordSnapshot={keywordSnapshot}
-        />
       </div>
 
       {/* Controls */}
@@ -1807,6 +2042,10 @@ export default function App() {
   const [analysisProgress, setAnalysisProgress] = useState(null);
   const [improvedCV, setImprovedCV] = useState('');
   const [keywordSnapshot, setKeywordSnapshot] = useState(null);
+  const [proposedCV, setProposedCV] = useState('');
+  const [proposedKeywordSnapshot, setProposedKeywordSnapshot] = useState(null);
+  const [suggestionDecisions, setSuggestionDecisions] = useState({});
+  const [validatedKeywords, setValidatedKeywords] = useState(null);
 
   const addLogEntry = useCallback((entry) => {
     setLogs((prev) => {
@@ -1837,6 +2076,10 @@ export default function App() {
     setSelectedVoice(voice);
     setImprovedCV(cv);
     setKeywordSnapshot(null);
+    setProposedCV('');
+    setProposedKeywordSnapshot(null);
+    setSuggestionDecisions({});
+    setValidatedKeywords(null);
     setAnalysisProgress({
       stage: 'keywords',
       totalKeywords: null,
@@ -1852,19 +2095,24 @@ export default function App() {
           ...progressUpdate
         }));
       });
-      const { text: improvedText } = applySuggestionsToCV(cv, result.suggestions);
-      const missingAfter = computeMissingKeywordsAfter(result.validatedKeywords?.inJob, improvedText);
-
       setChanges(result.suggestions);
       setScore(result.score);
-      setImprovedCV(improvedText);
-      setKeywordSnapshot({
+      setSuggestionDecisions(
+        Object.fromEntries((result.suggestions || []).map((s) => [s.id, 'pending']))
+      );
+      setValidatedKeywords(result.validatedKeywords || null);
+
+      const { text: proposedText } = applySuggestionsToCV(cv, result.suggestions);
+      setProposedCV(proposedText);
+      const missingAfterProposed = computeMissingKeywordsAfter(result.validatedKeywords?.inJob, proposedText);
+      setProposedKeywordSnapshot({
         total: result.validatedKeywords?.inJob?.length || 0,
         before: result.validatedKeywords?.missing?.length || 0,
-        after: missingAfter.length,
+        after: missingAfterProposed.length,
         missingBeforeList: result.validatedKeywords?.missing || [],
-        missingAfterList: missingAfter
+        missingAfterList: missingAfterProposed
       });
+      setImprovedCV(cv); // applied version reflects user choices later
       setView('presentation');
       setAnalysisProgress(null);
     } catch (err) {
@@ -1881,9 +2129,60 @@ export default function App() {
     setAnalysisProgress(null);
     setImprovedCV('');
     setKeywordSnapshot(null);
+    setProposedCV('');
+    setProposedKeywordSnapshot(null);
+    setSuggestionDecisions({});
+    setValidatedKeywords(null);
+  };
+
+  useEffect(() => {
+    if (!cvText) {
+      setImprovedCV('');
+      setKeywordSnapshot(null);
+      setProposedCV('');
+      setProposedKeywordSnapshot(null);
+      return;
+    }
+
+    const accepted = changes.filter((change) => (suggestionDecisions[change.id] || 'pending') === 'accepted');
+
+    const { text: improvedText } = applySuggestionsToCV(cvText, accepted);
+    setImprovedCV(improvedText);
+
+    if (validatedKeywords) {
+      const missingAfter = computeMissingKeywordsAfter(validatedKeywords.inJob, improvedText);
+      setKeywordSnapshot({
+        total: validatedKeywords.inJob?.length || 0,
+        before: validatedKeywords.missing?.length || 0,
+        after: missingAfter.length,
+        missingBeforeList: validatedKeywords.missing || [],
+        missingAfterList: missingAfter
+      });
+    } else {
+      setKeywordSnapshot(null);
+    }
+  }, [changes, suggestionDecisions, cvText, validatedKeywords]);
+
+  const handleDecisionChange = (id, decision) => {
+    setSuggestionDecisions((prev) => ({
+      ...prev,
+      [id]: decision
+    }));
+  };
+
+  const handleApplyAll = () => {
+    setSuggestionDecisions((prev) => {
+      const next = { ...prev };
+      changes.forEach((change) => {
+        next[change.id] = 'accepted';
+      });
+      return next;
+    });
   };
 
   const showPresentation = view === 'presentation' && changes.length > 0;
+  const displayKeywordSnapshot = proposedKeywordSnapshot || keywordSnapshot;
+  const displayImprovedCV = proposedCV || improvedCV || cvText;
 
   return (
     <>
@@ -1895,8 +2194,11 @@ export default function App() {
           onBack={handleBack} 
           apiKey={apiKey}
           selectedVoice={selectedVoice}
-          improvedCV={improvedCV}
-          keywordSnapshot={keywordSnapshot}
+          improvedCV={displayImprovedCV}
+          keywordSnapshot={displayKeywordSnapshot}
+          decisions={suggestionDecisions}
+          onDecisionChange={handleDecisionChange}
+          onApplyAll={handleApplyAll}
         />
       ) : (
         <InputView onAnalyze={handleAnalyze} isLoading={isLoading} progress={analysisProgress} />
