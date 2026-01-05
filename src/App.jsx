@@ -906,51 +906,8 @@ const OutroSlide = ({
 
   return (
     <div className="space-y-6">
-      <div className="bg-gradient-to-br from-white to-emerald-50 border border-emerald-100 rounded-3xl p-6 shadow-sm">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-[0.08em]">Walkthrough complete</p>
-            <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 mt-2">Review and apply the {totalChanges} changes</h1>
-            <p className="text-slate-600 mt-2">
-              Score lifted from <span className="font-semibold text-slate-900">{score}%</span> to <span className="font-semibold text-emerald-700">{newScore}%</span>.
-              Your edits sit on the right—accept or reject them in one place.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-white border border-emerald-100 px-4 py-3 shadow-sm">
-              <div className="text-xs text-slate-500 uppercase font-semibold">Projected match</div>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-3xl font-bold text-emerald-700">{newScore}%</span>
-                <span className="text-sm text-slate-500">was {score}%</span>
-              </div>
-            </div>
-            <button
-              onClick={onApplyAll}
-              className="px-4 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-lg shadow-emerald-200 transition"
-            >
-              Apply all changes
-            </button>
-          </div>
-        </div>
-      </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
-          <div className="text-xs uppercase font-semibold text-slate-500">Match score</div>
-          <div className="flex items-center gap-4 mt-3">
-            <div className="flex-1">
-              <div className="text-3xl font-bold text-slate-900">{score}%</div>
-              <div className="text-xs text-slate-500 mt-1">Before walkthrough</div>
-            </div>
-            <svg className="w-6 h-6 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-            </svg>
-            <div className="flex-1">
-              <div className="text-3xl font-bold text-emerald-700">{newScore}%</div>
-              <div className="text-xs text-slate-500 mt-1">Projected after</div>
-            </div>
-          </div>
-        </div>
+      <div className="grid gap-4">
         <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <div className="text-xs uppercase font-semibold text-slate-500">Keywords covered</div>
           <div className="flex items-center gap-4 mt-3">
@@ -994,7 +951,7 @@ const OutroSlide = ({
             Applied suggestions are highlighted in the panel
           </div>
         </div>
-        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-72 overflow-auto text-sm text-slate-800 whitespace-pre-wrap font-mono mt-4">
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-512 overflow-auto text-sm text-slate-800 whitespace-pre-wrap font-mono mt-4">
           {improvedCV || 'Your improved CV will appear here after applying the changes.'}
         </div>
       </div>
@@ -1265,11 +1222,11 @@ const SuggestionReviewPanel = ({
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-100">
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-100 break-words">
                   <div className="text-[11px] uppercase font-semibold text-rose-700 mb-1">Original</div>
                   <div className="text-rose-800">{change.original}</div>
                 </div>
-                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100">
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 break-words">
                   <div className="text-[11px] uppercase font-semibold text-emerald-700 mb-1">Replacement</div>
                   <div className="text-emerald-900 font-medium">{change.replacement}</div>
                 </div>
@@ -2144,9 +2101,12 @@ export default function App() {
       return;
     }
 
-    const accepted = changes.filter((change) => (suggestionDecisions[change.id] || 'pending') === 'accepted');
+    const appliedChanges = changes.filter((change) => {
+      const decision = suggestionDecisions[change.id] || 'pending';
+      return decision !== 'rejected' && decision !== 'skipped';
+    });
 
-    const { text: improvedText } = applySuggestionsToCV(cvText, accepted);
+    const { text: improvedText } = applySuggestionsToCV(cvText, appliedChanges);
     setImprovedCV(improvedText);
 
     if (validatedKeywords) {
@@ -2181,8 +2141,8 @@ export default function App() {
   };
 
   const showPresentation = view === 'presentation' && changes.length > 0;
-  const displayKeywordSnapshot = proposedKeywordSnapshot || keywordSnapshot;
-  const displayImprovedCV = proposedCV || improvedCV || cvText;
+  const displayKeywordSnapshot = keywordSnapshot || proposedKeywordSnapshot;
+  const displayImprovedCV = improvedCV || proposedCV || cvText;
 
   return (
     <>
