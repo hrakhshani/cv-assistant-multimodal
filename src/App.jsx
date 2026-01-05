@@ -969,7 +969,7 @@ const OutroSlide = ({
             value={editorValue ?? improvedCV ?? ''}
             onChange={(e) => onEditorChange?.(e.target.value)}
             spellCheck="false"
-            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-512 min-h-[260px] overflow-auto text-sm text-slate-800 font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-200 resize-y cv-editor-highlight"
+            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-350px min-h-[350px] overflow-auto text-sm text-slate-800 font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-200 resize-y cv-editor-highlight"
             style={{ maxHeight: '512px' }}
             placeholder="Your improved CV will appear here after applying the changes."
           />
@@ -990,7 +990,7 @@ const OutroSlide = ({
           onClick={onRestart}
           className="px-5 py-3 rounded-xl border border-slate-300 text-slate-800 hover:border-emerald-300 hover:text-emerald-800 transition"
         >
-          Watch walkthrough again
+          Watch walkthrough
         </button>
         <button
           onClick={onBack}
@@ -1242,12 +1242,12 @@ const SuggestionReviewPanel = ({
                   <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${badgeStyle.gradient}`} />
                   <span className="text-xs font-semibold uppercase text-slate-600">{badgeStyle.label}</span>
                   {change.importance && (
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-slate-600">
+                    <span className="text-[10px] px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-600">
                       {change.importance} priority
                     </span>
                   )}
                 </div>
-                <span className={`text-[11px] px-2 py-1 rounded-lg border ${style}`}>
+                <span className={`text-[10px] px-2 py-1 rounded-lg border ${style}`}>
                   {decision === 'pending' ? 'Pending' : decision.charAt(0).toUpperCase() + decision.slice(1)}
                 </span>
               </div>
