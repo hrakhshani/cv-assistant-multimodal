@@ -433,7 +433,7 @@ Return ONLY valid JSON:
   ]
 }
 
-Provide 5-10 high-impact suggestions. The "original" field MUST be an exact substring from the CV.`;
+Ensure that proposed modifications do not conflict with one another. Only include independent, non-overlapping changes. Provide high-impact suggestions only. The "original" field MUST be an exact substring from the CV.`;
 
   const userMessage = `JOB DESCRIPTION:\n${jobDescription}\n\nCV:\n${cvText}`;
   const model = apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-5.2';
