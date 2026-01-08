@@ -140,6 +140,7 @@ const generateStorytellingIntros = async (changes = [], apiKey, onLog) => {
   const prompt = `You are a concise storytelling coach who connects resume improvements into a single narrative.
 
 Given the ordered list of changes below, write a short opening sentence for EACH change that:
+- The first slide must begin with a warm, natural general introduction and alos provide a sets context for the overall story before referencing any specific fix.
 - Briefly recalls what we just fixed (or notes it's the first change)
 - Explains why this change matters right now
 - Uses plain, friendly language (under 35 words per sentence)
