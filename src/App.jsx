@@ -58,7 +58,7 @@ const generateScript = (change, index, total, score) => {
   const style = categoryStyles[change.type];
   const isFirst = index === 0;
   const isLast = index === total - 1;
-  
+
   const categoryIntros = {
     correctness: [
       "I noticed a small grammar issue that we should fix.",
@@ -87,6 +87,13 @@ const generateScript = (change, index, total, score) => {
     ]
   };
 
+  const buildFallbackNarrativeIntro = () => {
+    const previousLabel = isFirst ? 'where we start the story' : (change.prevTitle || 'the last tweak we made');
+    const nextLabel = isLast ? 'finish strong' : (change.nextTitle || 'the next improvement waiting for us');
+    const currentFocus = change.title ? change.title.toLowerCase() : 'this next refinement';
+    return `${isFirst ? "Let's kick off" : 'Building on'} ${previousLabel}, we shift into ${currentFocus} so your CV flows naturally—${isLast ? 'this ties the journey together.' : `setting up a smooth handoff to ${nextLabel}.`}`;
+  };
+
   const impacts = [
     `This change alone could improve your match score by about ${Math.round(100/total)}%.`,
     `Recruiters will definitely notice this improvement.`,
@@ -100,18 +107,130 @@ const generateScript = (change, index, total, score) => {
   const mainExplanation = change.description;
   
   const impact = impacts[index % impacts.length];
+
+  const narrativeIntro = (change.narrativeIntro || '').trim() || buildFallbackNarrativeIntro();
   
   const outro = isLast
     ? `And that's all ${total} improvements! Apply these changes and you'll have a much stronger CV for this role.`
     : `Great, let's move on to the next one.`;
 
   return {
+    narrativeIntro,
     categoryIntro,
     mainExplanation,
     impact,
     outro,
-    fullScript: mainExplanation
+    fullScript: `${narrativeIntro} ${mainExplanation}`.trim()
   };
+};
+
+// Generate narrative intros that connect slides together
+const generateStorytellingIntros = async (changes = [], apiKey, onLog) => {
+  if (!apiKey || !Array.isArray(changes) || changes.length === 0) return [];
+
+  const formatChange = (change, idx) => `Change ${idx + 1} (id: ${change.id || `s-${idx}`}):
+- Title: ${change.title || 'Untitled'}
+- Category: ${change.type || 'unknown'}
+- Description: ${change.description || ''}
+- Original: ${change.original || ''}
+- Replacement: ${change.replacement || ''}`;
+
+  const changeList = changes.map(formatChange).join('\n\n');
+
+  const prompt = `You are a concise storytelling coach who connects resume improvements into a single narrative.
+
+Given the ordered list of changes below, write a short opening sentence for EACH change that:
+- Briefly recalls what we just fixed (or notes it's the first change)
+- Explains why this change matters right now
+- Uses plain, friendly language (under 35 words per sentence)
+
+Return ONLY valid JSON in this exact shape:
+{"intros":[{"id":"<change id>","intro":"<short connecting sentence>"}]}
+
+CHANGES (in order):
+${changeList}`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-5.2',
+        messages: [{ role: 'user', content: prompt }],
+        max_completion_tokens: 1200,
+        reasoning_effort: 'low',
+        response_format: { type: 'json_object' }
+      })
+    });
+
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message);
+    const content = data.choices?.[0]?.message?.content || '';
+
+    onLog?.({
+      stage: 'story',
+      provider: 'openai',
+      model: 'gpt-5.2',
+      prompt,
+      response: content,
+      status: 'success'
+    });
+
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON found in storytelling response');
+    const parsed = JSON.parse(jsonMatch[0]);
+    const intros = parsed.intros || parsed.narratives || parsed.items || [];
+    return Array.isArray(intros) ? intros : [];
+  } catch (error) {
+    onLog?.({
+      stage: 'story',
+      provider: 'openai',
+      model: 'gpt-5.2',
+      prompt,
+      response: error.message,
+      status: 'error'
+    });
+    console.error('Storytelling intro generation error:', error);
+    return [];
+  }
+};
+
+const mergeNarrativesIntoChanges = (changes = [], narrativeEntries = []) => {
+  const narrativeMap = new Map();
+
+  narrativeEntries.forEach((entry, idx) => {
+    if (!entry) return;
+    const introText = (entry.intro || entry.narrative || entry.text || '').trim();
+    if (!introText) return;
+
+    const possibleIndex = typeof entry.index === 'number'
+      ? entry.index
+      : (typeof entry.order === 'number' ? entry.order - 1 : null);
+
+    if (entry.id) narrativeMap.set(entry.id, introText);
+    if (entry.changeId) narrativeMap.set(entry.changeId, introText);
+    if (possibleIndex !== null && possibleIndex >= 0) narrativeMap.set(possibleIndex, introText);
+    narrativeMap.set(idx, introText);
+  });
+
+  return changes.map((change, idx) => {
+    const prevChange = changes[idx - 1];
+    const nextChange = changes[idx + 1];
+    const narrativeIntro = narrativeMap.get(change.id) 
+      || narrativeMap.get(idx) 
+      || narrativeMap.get(idx + 1) 
+      || '';
+
+    return {
+      ...change,
+      prevTitle: prevChange?.title,
+      nextTitle: nextChange?.title,
+      narrativeIntro: narrativeIntro || undefined
+    };
+  });
 };
 
 // ============================================
@@ -838,6 +957,12 @@ const PresentationSlide = ({
           <span className="text-emerald-700 text-sm font-medium">{style.label}</span>
         </div>
 
+        {script.narrativeIntro && (
+          <p className={`text-sm text-slate-500 italic mb-3 transition-all duration-500 delay-150 ${phase !== 'intro' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+            {script.narrativeIntro}
+          </p>
+        )}
+
         {/* Main Title */}
         <h2 className={`text-4xl font-bold text-slate-900 mb-4 transition-all duration-500 delay-200 ${phase !== 'intro' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
           {change.title}
@@ -1215,6 +1340,7 @@ const LogConsole = ({ logs, onClear }) => {
   const getStageLabel = (stage) => {
     if (stage === 'analysis') return 'CV Analysis';
     if (stage === 'keywords') return 'Keyword Extraction';
+    if (stage === 'story') return 'Narrative Intros';
     return 'Log';
   };
 
@@ -1761,6 +1887,12 @@ const Presentation = ({
       const script = generateScript(changes[idx], idx, changes.length, score);
       if (!script) continue;
 
+      if (script.narrativeIntro?.trim()) {
+        const introKey = getSpeechKey(script.narrativeIntro, selectedVoice, PRESENTATION_SPEECH_SPEED);
+        allowedKeys.add(introKey);
+        prefetchSpeech(script.narrativeIntro, selectedVoice, PRESENTATION_SPEECH_SPEED);
+      }
+
       if (script.mainExplanation?.trim()) {
         const mainKey = getSpeechKey(script.mainExplanation, selectedVoice, PRESENTATION_SPEECH_SPEED);
         allowedKeys.add(mainKey);
@@ -1803,39 +1935,62 @@ const Presentation = ({
         setPhase('before-after');
         // Start pulling down audio while the visuals are animating
         if (audioEnabled) {
-          //prefetchSpeech(script.categoryIntro, selectedVoice, 1.0);
+          if (script.narrativeIntro?.trim()) {
+            prefetchSpeech(script.narrativeIntro, selectedVoice, PRESENTATION_SPEECH_SPEED);
+          }
           prefetchSpeech(script.mainExplanation, selectedVoice, PRESENTATION_SPEECH_SPEED);
         }
         
         // Phase 4: After visual elements are shown, START audio narration
         timeoutRef.current = setTimeout(() => {
           if (audioEnabled) {
-            const handleImpact = () => {
-              setPhase('impact');
-              if (nextScript) {
-                //prefetchSpeech(nextScript.categoryIntro, selectedVoice, 1.0);
+            const moveToNextSlide = () => {
+              if (isPlaying && slideIndex < changes.length - 1) {
+                timeoutRef.current = setTimeout(() => {
+                  setCurrentSlide(slideIndex + 1);
+                }, 1500);
+              } else if (slideIndex === changes.length - 1) {
+                timeoutRef.current = setTimeout(() => {
+                  setCurrentSlide(changes.length);
+                  setIsPlaying(false);
+                }, 2000);
               }
-              
-              speak("", () => {
-                if (isPlaying && slideIndex < changes.length - 1) {
-                  timeoutRef.current = setTimeout(() => {
-                    setCurrentSlide(slideIndex + 1);
-                  }, 1500);
-                } else if (slideIndex === changes.length - 1) {
-                  timeoutRef.current = setTimeout(() => {
-                    setCurrentSlide(changes.length);
-                    setIsPlaying(false);
-                  }, 2000);
-                }
-              }, selectedVoice, PRESENTATION_SPEECH_SPEED);
             };
 
-            speak("", () => {
+            const handleImpact = () => {
+              setPhase('impact');
+              if (nextScript?.narrativeIntro?.trim()) {
+                prefetchSpeech(nextScript.narrativeIntro, selectedVoice, PRESENTATION_SPEECH_SPEED);
+              }
+              if (nextScript?.mainExplanation?.trim()) {
+                prefetchSpeech(nextScript.mainExplanation, selectedVoice, PRESENTATION_SPEECH_SPEED);
+              }
+
+              if (script.impact?.trim()) {
+                speak(script.impact, moveToNextSlide, selectedVoice, PRESENTATION_SPEECH_SPEED);
+              } else {
+                moveToNextSlide();
+              }
+            };
+
+            const handleMain = () => {
               prefetchSpeech(script.impact, selectedVoice, PRESENTATION_SPEECH_SPEED);
-              speak(script.mainExplanation, () => {
+              if (script.mainExplanation?.trim()) {
+                speak(script.mainExplanation, () => {
+                  handleImpact();
+                }, selectedVoice, PRESENTATION_SPEECH_SPEED);
+              } else {
                 handleImpact();
+              }
+            };
+
+            if (script.narrativeIntro?.trim()) {
+              speak(script.narrativeIntro, () => {
+                handleMain();
               }, selectedVoice, PRESENTATION_SPEECH_SPEED);
-            }, selectedVoice, PRESENTATION_SPEECH_SPEED);
+            } else {
+              handleMain();
+            }
           } else {
             // No audio: just progress through phases with timers
             timeoutRef.current = setTimeout(() => {
@@ -2194,11 +2349,11 @@ const InputView = ({ onAnalyze, isLoading, progress }) => {
   const missingKeywords = progress?.missingKeywords || [];
   const missingPreview = missingKeywords.slice(0, 5);
   const hasMoreMissing = missingKeywords.length > missingPreview.length;
-  const stageRank = { keywords: 1, generating: 2, done: 3 };
+  const stageRank = { keywords: 1, generating: 2, story: 3, done: 4 };
   const currentStageRank = stageRank[progressStage] || 1;
   const hasKeywordData = totalKeywords !== null || matchedKeywords !== null || missingKeywords.length > 0;
   const isGenerating = currentStageRank >= 2;
-  const isDone = currentStageRank >= 3;
+  const isDone = currentStageRank >= 4;
   const statusMessage = progress?.message || 'Analyzing your CV and job description...';
   const [showAllMissing, setShowAllMissing] = useState(false);
   const missingDisplay = showAllMissing ? missingKeywords : missingPreview;
@@ -2754,14 +2909,23 @@ export default function App() {
         keywordList
       );
 
-      setChanges(result.suggestions);
+      setAnalysisProgress((prev) => ({
+        ...(prev || {}),
+        stage: 'story',
+        message: 'Weaving a short intro for each slide so the walkthrough feels like a story...'
+      }));
+
+      const storytellingEntries = await generateStorytellingIntros(result.suggestions, key, addLogEntry);
+      const suggestionsWithNarrative = mergeNarrativesIntoChanges(result.suggestions, storytellingEntries);
+
+      setChanges(suggestionsWithNarrative);
       setScore(result.score);
       setSuggestionDecisions(
-        Object.fromEntries((result.suggestions || []).map((s) => [s.id, 'pending']))
+        Object.fromEntries((suggestionsWithNarrative || []).map((s) => [s.id, 'pending']))
       );
       setValidatedKeywords(result.validatedKeywords || null);
 
-      const { text: proposedText } = applySuggestionsToCV(cv, result.suggestions);
+      const { text: proposedText } = applySuggestionsToCV(cv, suggestionsWithNarrative);
       setProposedCV(proposedText);
       const missingAfterProposed = computeMissingKeywordsAfter(result.validatedKeywords?.inJob, proposedText);
       setProposedKeywordSnapshot({
