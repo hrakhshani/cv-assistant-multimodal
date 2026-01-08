@@ -477,6 +477,19 @@ const computeMissingKeywordsAfter = (keywordsInJob = [], updatedCV = '') => {
 // ============================================
 // OPENAI TEXT-TO-SPEECH API
 // ============================================
+// Guidance string for OpenAI TTS voice, accent, and style.
+const TTS_VOICE_GUIDANCE = `Accent/Affect: Warm, refined, and gently instructive, reminiscent of a friendly art instructor.
+
+Tone: Calm, encouraging, and articulate, clearly describing each step with patience.
+
+Pacing: Slow and deliberate, pausing often to allow the listener to follow instructions comfortably.
+
+Emotion: Cheerful, supportive, and pleasantly enthusiastic; convey genuine enjoyment and appreciation of art.
+
+Pronunciation: Clearly articulate artistic terminology (e.g., "brushstrokes," "landscape," "palette") with gentle emphasis.
+
+Personality Affect: Friendly and approachable with a hint of sophistication; speak confidently and reassuringly, guiding users through each painting step patiently and warmly.
+`;
 
 const generateSpeech = async (text, apiKey, voice = 'onyx', speed = 1.2, signal) => {
   const response = await fetch('https://api.openai.com/v1/audio/speech', {
@@ -488,6 +501,7 @@ const generateSpeech = async (text, apiKey, voice = 'onyx', speed = 1.2, signal)
     signal,
     body: JSON.stringify({
       model: 'tts-1',
+      instructions: TTS_VOICE_GUIDANCE,
       input: text,
       voice: voice, // alloy, echo, fable, onyx, nova, shimmer
       speed: speed, // 0.25 to 4.0
