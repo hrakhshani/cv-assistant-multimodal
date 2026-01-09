@@ -1546,15 +1546,12 @@ const OutroSlide = ({
 
   return (
     <div className="space-y-6">
-
-
-
       <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
           <div className="grid gap-4">
         <div>
-          <div className="text-xs uppercase font-semibold text-slate-500">Keywords covered</div>
+        <div className="text-xs uppercase font-semibold text-slate-500">Keywords covered</div>
           <div className="flex items-center gap-4 mt-3">
             <div className="flex-1">
               <div className="text-lg font-semibold text-slate-900">{totalKeywords} total</div>
@@ -1984,50 +1981,6 @@ const SuggestionReviewPanel = ({
 
   const panelContent = (
     <div className={panelClasses}>
-      <div className="p-5 border-b border-slate-200 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-xs uppercase font-semibold text-slate-500">Recommended modifications</div>
-            <div className="text-lg font-bold text-slate-900">
-              {acceptedCount} accepted · {pendingCount} pending · {skippedCount} skipped · {rejectedCount} rejected
-            </div>
-          </div>
-          {!isInline && (
-            <button
-              onClick={onClose}
-              className="w-9 h-9 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700"
-              aria-label="Close review panel"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={onApplyAll}
-            className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold shadow-sm hover:bg-emerald-700 transition"
-          >
-            Apply all changes
-          </button>
-          {onRestart && (
-            <button
-              onClick={onRestart}
-              className="px-3 py-2 rounded-lg bg-white text-slate-800 text-sm font-semibold border border-slate-200 hover:border-emerald-200 hover:text-emerald-800 transition"
-            >
-              Watch walkthrough
-            </button>
-          )}
-          {onBack && (
-            <button
-              onClick={onBack}
-              className="px-3 py-2 rounded-lg bg-white text-slate-700 text-sm font-semibold border border-slate-200 hover:border-slate-300 transition"
-            >
-              Analyze another CV
-            </button>
-          )}
-        </div>
-      </div>
-
       <div className="p-4 overflow-y-auto space-y-3">
         {sorted.map((change) => {
           const decision = decisions[change.id] || 'pending';
@@ -2048,36 +2001,6 @@ const SuggestionReviewPanel = ({
               }}
               className="border border-slate-200 rounded-2xl p-4 shadow-sm cursor-pointer transition hover:border-emerald-200 hover:shadow-md"
             >
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${badgeStyle.gradient}`} />
-                  <span className="text-xs font-semibold uppercase text-slate-600">{badgeStyle.label}</span>
-                  {change.importance && (
-                    <span className="text-[10px] px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-600">
-                      {change.importance} priority
-                    </span>
-                  )}
-                </div>
-                <span className={`text-[10px] px-2 py-1 rounded-lg border ${style}`}>
-                  {decision === 'pending' ? 'Pending' : decision.charAt(0).toUpperCase() + decision.slice(1)}
-                </span>
-              </div>
-
-              <div className="mb-2">
-                <div className="text-sm font-semibold text-slate-900">{change.title}</div>
-                <p className="text-sm text-slate-600 mt-1">{change.description}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-100 break-words">
-                  <div className="text-[11px] uppercase font-semibold text-rose-700 mb-1">Original</div>
-                  <div className="text-rose-800">{change.original}</div>
-                </div>
-                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 break-words">
-                  <div className="text-[11px] uppercase font-semibold text-emerald-700 mb-1">Replacement</div>
-                  <div className="text-emerald-900 font-medium">{change.replacement}</div>
-                </div>
-              </div>
 
               <div className="mt-3 flex items-center gap-2 flex-wrap">
                 <button
@@ -2147,7 +2070,7 @@ const SuggestionReviewPanel = ({
   if (isInline) {
     return (
       <div className={`${panelHeight} sticky top-4`}>
-        {panelContent}
+
       </div>
     );
   }
@@ -2158,7 +2081,7 @@ const SuggestionReviewPanel = ({
         className="flex-1 bg-slate-900/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      {panelContent}
+
     </div>
   );
 };
@@ -2175,11 +2098,14 @@ const CorrectionEditor = ({
   decisions = {},
   onDecisionChange
 }) => {
+  const containerRef = useRef(null);
   const overlayRef = useRef(null);
+  const spanRefs = useRef(new Map());
   const internalEditorRef = useRef(null);
   const resolvedEditorRef = editorRef || internalEditorRef;
   const [activeChangeId, setActiveChangeId] = useState(null);
   const [hasUserSelected, setHasUserSelected] = useState(false);
+  const [popoverStyle, setPopoverStyle] = useState(null);
 
   const highlightByType = useMemo(() => ({
     correctness: 'bg-emerald-200/60 border-emerald-300/70',
@@ -2268,11 +2194,58 @@ const CorrectionEditor = ({
     setHasUserSelected(false);
   }, [segments.length, safeValue]);
 
+  const registerSpan = useCallback((id, node) => {
+    if (!spanRefs.current) return;
+    if (node) spanRefs.current.set(id, node);
+    else spanRefs.current.delete(id);
+  }, []);
+
+  const updatePopoverPosition = useCallback((changeId) => {
+    const container = containerRef.current;
+    const highlightEl = spanRefs.current.get(changeId);
+    if (!container || !highlightEl) {
+      setPopoverStyle(null);
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const highlightRect = highlightEl.getBoundingClientRect();
+
+    const maxWidth = container.clientWidth;
+    const offsetTop = highlightRect.bottom - containerRect.top + 8;
+    const offsetLeft = highlightRect.left - containerRect.left;
+    const clampedLeft = Math.max(0, Math.min(offsetLeft, Math.max(maxWidth - 320, 0)));
+
+    setPopoverStyle({
+      top: offsetTop,
+      left: clampedLeft
+    });
+  }, []);
+
+  useEffect(() => {
+    if (activeChangeId) {
+      updatePopoverPosition(activeChangeId);
+    } else {
+      setPopoverStyle(null);
+    }
+  }, [activeChangeId, safeValue, segments, updatePopoverPosition]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (activeChangeId) {
+        updatePopoverPosition(activeChangeId);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [activeChangeId, updatePopoverPosition]);
+
   const syncScroll = useCallback(() => {
     if (!overlayRef.current || !resolvedEditorRef?.current) return;
     overlayRef.current.scrollTop = resolvedEditorRef.current.scrollTop;
     overlayRef.current.scrollLeft = resolvedEditorRef.current.scrollLeft;
-  }, [resolvedEditorRef]);
+    if (activeChangeId) updatePopoverPosition(activeChangeId);
+  }, [activeChangeId, resolvedEditorRef, updatePopoverPosition]);
 
   const handleCursorSelection = useCallback((event) => {
     const pos = typeof event?.target?.selectionStart === 'number' ? event.target.selectionStart : 0;
@@ -2301,7 +2274,19 @@ const CorrectionEditor = ({
       output.push(
         <span
           key={`${seg.change.id}-${idx}`}
-          className={`relative inline-block rounded-md px-0.5 py-0.5 text-transparent ${baseClass} ${halo}`}
+          ref={(node) => registerSpan(seg.change.id, node)}
+          className={`relative inline-block rounded-md px-0.5 py-0.5 text-transparent ${baseClass} ${halo} pointer-events-auto`}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            setActiveChangeId(seg.change.id);
+            setHasUserSelected(true);
+            updatePopoverPosition(seg.change.id);
+          }}
+          title={seg.change.title || 'Correction'}
         >
           {safeValue.slice(seg.start, seg.end)}
         </span>
@@ -2315,7 +2300,7 @@ const CorrectionEditor = ({
     }
 
     return output;
-  }, [decisions, highlightByType, decisionHalo, safeValue, segments]);
+  }, [decisions, highlightByType, decisionHalo, registerSpan, safeValue, segments, updatePopoverPosition]);
 
   const activeChange = activeChangeId
     ? changes.find((c) => c.id === activeChangeId)
@@ -2325,13 +2310,13 @@ const CorrectionEditor = ({
 
   return (
     <div className="space-y-3">
-      <div className="relative">
+      <div className="relative" ref={containerRef}>
         <div
           ref={overlayRef}
           className="absolute inset-0 overflow-auto rounded-2xl pointer-events-none"
           aria-hidden="true"
         >
-          <pre className="min-h-[350px] w-full p-4 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-transparent">
+          <pre className="min-h-[1024px] w-full p-4 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-transparent">
             {renderedSegments}
           </pre>
         </div>
@@ -2348,78 +2333,84 @@ const CorrectionEditor = ({
           style={{ maxHeight: '512px' }}
           placeholder="Your improved CV will appear here after applying the changes."
         />
+        {activeChange && popoverStyle && (
+          <div
+            className="absolute z-20 rounded-2xl border border-slate-200 bg-white shadow-xl shadow-emerald-50"
+            style={{
+              top: popoverStyle.top,
+              left: popoverStyle.left
+            }}
+          >
+            <div className="p-4 space-y-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border bg-white"
+                    style={{
+                      color: activeStyle?.text || '#334155',
+                      borderColor: activeStyle?.bar || '#e2e8f0'
+                    }}
+                  >
+                    <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${activeStyle?.gradient || 'from-emerald-400 to-green-500'}`} />
+                    {activeStyle?.label || 'Correction'}
+                  </span>
+                  <span className="text-[11px] px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 capitalize text-slate-700">
+                    {activeDecision}
+                  </span>
+                </div>
+                <div className="text-sm font-semibold text-slate-900">{activeChange.title}</div>
+                <p className="text-sm text-slate-600">{activeChange.description}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-100 break-words">
+                  <div className="text-[10px] uppercase font-semibold text-rose-700 mb-1">Original</div>
+                  <div className="text-rose-800">{activeChange.original}</div>
+                </div>
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 break-words">
+                  <div className="text-[10px] uppercase font-semibold text-emerald-700 mb-1">Replacement</div>
+                  <div className="text-emerald-900 font-medium">{activeChange.replacement}</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onDecisionChange?.(activeChange.id, 'accepted')}
+                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
+                    activeDecision === 'accepted'
+                      ? 'bg-emerald-500 text-white shadow-sm'
+                      : 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                  }`}
+                >
+                  Accept
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDecisionChange?.(activeChange.id, 'rejected')}
+                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
+                    activeDecision === 'rejected'
+                      ? 'bg-rose-500 text-white border-rose-500'
+                      : 'bg-white border border-rose-200 text-rose-700 hover:bg-rose-50'
+                  }`}
+                >
+                  Reject
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDecisionChange?.(activeChange.id, 'pending')}
+                  className="px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       <div className="text-xs text-slate-500">
-        Corrected areas are tinted in the editor. Click any highlight (or place the cursor inside it) to inspect, accept, or reject the change.
+        Corrected areas are tinted in the editor. Click any highlight (or place the cursor inside it) to open its inline popover with explanation and actions.
       </div>
-
-      {activeChange && (
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 space-y-3">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border bg-white"
-                  style={{
-                    color: activeStyle?.text || '#334155',
-                    borderColor: activeStyle?.bar || '#e2e8f0'
-                  }}
-                >
-                  <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${activeStyle?.gradient || 'from-emerald-400 to-green-500'}`} />
-                  {activeStyle?.label || 'Correction'}
-                </span>
-                <span className="text-xs px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 capitalize text-slate-700">
-                  {activeDecision}
-                </span>
-              </div>
-              <div className="text-sm font-semibold text-slate-900">{activeChange.title}</div>
-              <p className="text-sm text-slate-600">{activeChange.description}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onDecisionChange?.(activeChange.id, 'accepted')}
-                className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
-                  activeDecision === 'accepted'
-                    ? 'bg-emerald-500 text-white shadow-sm'
-                    : 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-                }`}
-              >
-                Accept
-              </button>
-              <button
-                type="button"
-                onClick={() => onDecisionChange?.(activeChange.id, 'rejected')}
-                className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
-                  activeDecision === 'rejected'
-                    ? 'bg-rose-500 text-white border-rose-500'
-                    : 'bg-white border border-rose-200 text-rose-700 hover:bg-rose-50'
-                }`}
-              >
-                Reject
-              </button>
-              <button
-                type="button"
-                onClick={() => onDecisionChange?.(activeChange.id, 'pending')}
-                className="px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition"
-              >
-                Reset
-              </button>
-            </div>
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-3 text-sm">
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-100 break-words">
-              <div className="text-[11px] uppercase font-semibold text-rose-700 mb-1">Original</div>
-              <div className="text-rose-800">{activeChange.original}</div>
-            </div>
-            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 break-words">
-              <div className="text-[11px] uppercase font-semibold text-emerald-700 mb-1">Replacement</div>
-              <div className="text-emerald-900 font-medium">{activeChange.replacement}</div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -2750,19 +2741,6 @@ const Presentation = ({
     return (
       <div className="fixed inset-0 bg-slate-50 text-slate-900">
         <div className="flex h-full gap-4 px-4 sm:px-6 lg:px-8 py-6">
-          <div className="w-[320px] sm:w-[360px] lg:w-[420px] overflow-y-auto pr-1">
-            <SuggestionReviewPanel
-              open
-              variant="inline"
-              suggestions={changes}
-              decisions={decisions}
-              onDecisionChange={onDecisionChange}
-              onApplyAll={onApplyAll}
-              onSelectChange={handleJumpToChange}
-              onRestart={handleRestart}
-              onBack={onBack}
-            />
-          </div>
           <div className="flex-1 min-w-0 overflow-y-auto pl-1">
             <div className="max-w-5xl w-full mx-auto space-y-6 pb-10">
               <OutroSlide
