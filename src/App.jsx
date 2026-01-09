@@ -557,31 +557,174 @@ Ensure that proposed modifications do not conflict with one another. Only includ
   }
 };
 
+// Generate new modifications based on a user request (chat or voice prompt)
+const generateUserRequestedChanges = async (
+  cvText,
+  jobDescription,
+  currentDraft,
+  userRequest,
+  apiKey,
+  apiProvider = 'anthropic',
+  existingChanges = [],
+  onLog
+) => {
+  const trimmedRequest = (userRequest || '').trim();
+  if (!trimmedRequest) {
+    throw new Error('Please provide a specific request for the modification chat.');
+  }
+
+  const existingTitles = existingChanges
+    .map((change, idx) => `${idx + 1}. ${change.title || change.id || 'Untitled'} (${change.type || 'unknown'})`)
+    .join('\n');
+
+  const prompt = `You are a precise CV improvement assistant. The user provided a natural-language request for additional tweaks.
+
+BASE CV (original, unedited):
+${cvText}
+
+CURRENT DRAFT (after applied/pending changes):
+${currentDraft || cvText}
+
+EXISTING RECOMMENDATIONS (avoid duplicates):
+${existingTitles || 'None yet'}
+
+USER REQUEST:
+${trimmedRequest}
+
+Create 1-3 NEW modifications that directly satisfy the user's request while staying honest to the CV. Follow these rules:
+- Do NOT repeat existing modifications (match by meaning/title/replacement).
+- No fabricated skills or achievements; only rephrase, clarify, or elevate what is already present.
+- "original" MUST be an exact substring from CURRENT DRAFT if possible; fall back to BASE CV only if not present in the current draft.
+- Keep suggestions independent and non-overlapping.
+- Stick to the existing categories: correctness, keyword, clarity, delivery.
+
+Return ONLY valid JSON:
+{
+  "score": <number 0-100 representing current CV-job alignment>,
+  "keywordAnalysis": {
+    "matched": <number of job keywords found in CV>,
+    "total": <total validated job keywords>,
+    "coverage": <percentage>
+  },
+  "suggestions": [
+    {
+      "id": "s-1",
+      "type": "<correctness|keyword|clarity|delivery>",
+      "title": "<short descriptive title>",
+      "description": "<conversational explanation and the reason how it can contibute to the improvment, few necessary sentences, like a helpful career coach>",
+      "original": "<exact text from CV - must be verbatim substring>",
+      "replacement": "<improved text>",
+      "importance": "<high|medium|low>",
+      "rationale": "<brief explanation of why this change helps without being dishonest>"
+    }
+  ]
+}`;
+
+  try {
+    const model = apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-5.2';
+    let content = '';
+
+    if (apiProvider === 'anthropic') {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 2000,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+      content = data.content?.[0]?.text || '';
+    } else {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          max_completion_tokens: 2000,
+          reasoning_effort: 'medium',
+          response_format: { type: 'json_object' }
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+      content = data.choices?.[0]?.message?.content || '';
+    }
+
+    onLog?.({
+      stage: 'user-request',
+      provider: apiProvider,
+      model,
+      prompt,
+      response: content,
+      status: 'success'
+    });
+
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON found in user-request response');
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    const suggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions : [];
+
+    return {
+      score: parsed.score,
+      keywordAnalysis: parsed.keywordAnalysis,
+      suggestions
+    };
+  } catch (error) {
+    onLog?.({
+      stage: 'user-request',
+      provider: apiProvider,
+      model: apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-5.2',
+      prompt,
+      response: error.message,
+      status: 'error'
+    });
+    console.error('User-request modification error:', error);
+    throw error;
+  }
+};
+
 // Apply validated suggestions to the CV text to generate an improved draft
 const applySuggestionsToCV = (cvText, suggestions = []) => {
   if (!Array.isArray(suggestions) || suggestions.length === 0) {
     return { text: cvText, applied: [] };
   }
 
-  const sorted = [...suggestions]
-    .filter((s) => typeof s.startIndex === 'number' && typeof s.endIndex === 'number' && s.startIndex >= 0)
-    .sort((a, b) => a.startIndex - b.startIndex);
+  // Preserve relative order while generally moving earlier edits first
+  const sorted = suggestions
+    .map((s, idx) => ({ ...s, __order: idx }))
+    .sort((a, b) => {
+      const aPos = typeof a.startIndex === 'number' && a.startIndex >= 0 ? a.startIndex : Infinity;
+      const bPos = typeof b.startIndex === 'number' && b.startIndex >= 0 ? b.startIndex : Infinity;
+      if (aPos !== bPos) return aPos - bPos;
+      return a.__order - b.__order;
+    });
 
-  let cursor = 0;
-  let output = '';
+  let output = cvText;
   const applied = [];
 
   sorted.forEach((s) => {
-    // Skip overlapping or invalid ranges to keep the text coherent
-    if (s.startIndex < cursor || s.endIndex > cvText.length) return;
-    output += cvText.slice(cursor, s.startIndex);
-    const replacementText = typeof s.replacement === 'string' ? s.replacement : s.original || '';
-    output += replacementText;
-    cursor = s.endIndex;
+    const target = typeof s.original === 'string' ? s.original : '';
+    if (!target) return;
+
+    const idx = output.indexOf(target);
+    if (idx === -1) return;
+
+    const replacementText = typeof s.replacement === 'string' ? s.replacement : target;
+    output = `${output.slice(0, idx)}${replacementText}${output.slice(idx + target.length)}`;
     applied.push(s.id);
   });
-
-  output += cvText.slice(cursor);
 
   return { text: output, applied };
 };
@@ -930,6 +1073,75 @@ const useAudioSystem = (apiKey) => {
 };
 
 // ============================================
+// SPEECH-TO-TEXT (BROWSER)
+// ============================================
+
+const useSpeechToText = () => {
+  const recognitionRef = useRef(null);
+  const [isSupported, setIsSupported] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event) => {
+      let finalText = '';
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        finalText += event.results[i][0].transcript;
+      }
+      setTranscript(finalText.trim());
+    };
+
+    recognition.onerror = (evt) => {
+      setError(evt.error || 'Speech recognition error');
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    setIsSupported(true);
+  }, []);
+
+  const startListening = useCallback(() => {
+    setError('');
+    if (!recognitionRef.current) return;
+    setTranscript('');
+    recognitionRef.current.start();
+    setIsListening(true);
+  }, []);
+
+  const stopListening = useCallback(() => {
+    if (!recognitionRef.current) return;
+    recognitionRef.current.stop();
+    setIsListening(false);
+  }, []);
+
+  const resetTranscript = useCallback(() => setTranscript(''), []);
+
+  return {
+    isSupported,
+    isListening,
+    transcript,
+    error,
+    startListening,
+    stopListening,
+    resetTranscript
+  };
+};
+
+// ============================================
 // PRESENTATION SLIDE COMPONENT
 // ============================================
 
@@ -1123,6 +1335,177 @@ const IntroSlide = ({
 // OUTRO SLIDE
 // ============================================
 
+const ModificationSummary = ({ changes = [], decisions = {}, onSelectChange }) => {
+  const total = changes.length;
+  const accepted = changes.filter((c) => decisions[c.id] === 'accepted').length;
+  const pending = total - accepted - changes.filter((c) => decisions[c.id] === 'rejected').length - changes.filter((c) => decisions[c.id] === 'skipped').length;
+  const highlight = changes.slice(0, 4);
+
+  return (
+    <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 h-full">
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div>
+          <div className="text-xs uppercase font-semibold text-slate-500">Modification summary</div>
+          <div className="text-lg font-bold text-slate-900">{total} total · {accepted} accepted · {pending} pending</div>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <span className="w-2 h-2 rounded-full bg-emerald-400" /> tap a card to jump in the editor
+        </div>
+      </div>
+      <div className="space-y-3">
+        {highlight.length === 0 && (
+          <div className="text-sm text-slate-600">No modifications yet. Use the chat to request one.</div>
+        )}
+        {highlight.map((change) => {
+          const status = decisions[change.id] || 'pending';
+          const badgeStyle = categoryStyles[change.type] || categoryStyles.clarity;
+          return (
+            <button
+              key={change.id}
+              onClick={() => onSelectChange?.(change)}
+              className="w-full text-left border border-slate-200 rounded-2xl p-4 hover:border-emerald-200 hover:shadow-md transition bg-white"
+            >
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${badgeStyle.gradient}`} />
+                  <span className="text-xs font-semibold uppercase text-slate-600">{badgeStyle.label}</span>
+                </div>
+                <span className="text-[10px] px-2 py-1 rounded-lg border bg-slate-50 text-slate-600 capitalize">
+                  {status}
+                </span>
+              </div>
+              <div className="text-sm font-semibold text-slate-900">{change.title}</div>
+              <p className="text-sm text-slate-600 mt-1 truncate">{change.description}</p>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const ModificationChat = ({ onSend, isSending, error, onClearError }) => {
+  const [message, setMessage] = useState('');
+  const [localError, setLocalError] = useState('');
+  const [lastSent, setLastSent] = useState('');
+  const { isSupported, isListening, transcript, error: voiceError, startListening, stopListening, resetTranscript } = useSpeechToText();
+
+  useEffect(() => {
+    if (isListening) {
+      setMessage(transcript);
+    }
+  }, [isListening, transcript]);
+
+  const handleSend = async () => {
+    const text = message.trim();
+    if (!text) {
+      setLocalError('Add a quick note about what you want changed.');
+      return;
+    }
+    setLocalError('');
+    try {
+      await onSend?.(text);
+      setLastSent(text);
+      setMessage('');
+      resetTranscript();
+    } catch (err) {
+      setLocalError(err?.message || 'Could not send your request.');
+    }
+  };
+
+  const toggleListening = () => {
+    if (!isSupported) return;
+    if (isListening) stopListening();
+    else {
+      resetTranscript();
+      setMessage('');
+      startListening();
+    }
+  };
+
+  return (
+    <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 h-full">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <div className="text-xs uppercase font-semibold text-slate-500">Your tweak requests</div>
+          <div className="text-lg font-bold text-slate-900">Chat or speak a change you want</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleListening}
+            disabled={!isSupported}
+            className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${isListening ? 'bg-amber-100 border-amber-200 text-amber-800' : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-200 hover:text-emerald-800 disabled:opacity-50'}`}
+          >
+            {isListening ? 'Stop voice' : 'Voice chat'}
+          </button>
+          {!isSupported && (
+            <span className="text-[11px] text-slate-500">Voice input not supported in this browser.</span>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <textarea
+          value={message}
+          onChange={(e) => {
+            setMessage(e.target.value);
+            setLocalError('');
+            onClearError?.();
+          }}
+          placeholder="Ask for changes: e.g., “Rewrite the leadership bullet to stress outcomes.”"
+          className="w-full min-h-[120px] p-4 rounded-2xl border border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition text-sm"
+        />
+        {isListening && (
+          <div className="flex items-center gap-2 text-xs text-amber-700">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            Listening... speak naturally and tap “Stop voice” when you’re done.
+          </div>
+        )}
+        {voiceError && (
+          <div className="text-xs text-rose-700 bg-rose-50 border border-rose-100 px-3 py-2 rounded-xl">
+            {voiceError}
+          </div>
+        )}
+        {(localError || error) && (
+          <div className="text-xs text-rose-700 bg-rose-50 border border-rose-100 px-3 py-2 rounded-xl flex items-center justify-between">
+            <span>{localError || error}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setLocalError('');
+                onClearError?.();
+              }}
+              className="text-[11px] font-semibold text-rose-700 hover:text-rose-900"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+        {lastSent && (
+          <div className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-2 rounded-xl">
+            Sent: “{lastSent}”
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between gap-3 mt-4">
+        <div className="text-xs text-slate-500">
+          We’ll return new modifications in the same format so they appear on the right panel.
+        </div>
+        <button
+          type="button"
+          onClick={handleSend}
+          disabled={isSending}
+          className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold shadow-lg shadow-emerald-200 disabled:opacity-60 transition"
+        >
+          {isSending ? 'Generating…' : 'Send request'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const OutroSlide = ({ 
   isActive, 
   score, 
@@ -1135,7 +1518,14 @@ const OutroSlide = ({
   onApplyAll,
   editorRef,
   editorValue,
-  onEditorChange
+  onEditorChange,
+  changes,
+  decisions,
+  onSelectChange,
+  onSendUserRequest,
+  isRequestingUserChange,
+  userRequestError,
+  onClearUserRequestError
 }) => {
   const [showAllMissingKeywords, setShowAllMissingKeywords] = useState(false);
 
@@ -1156,6 +1546,60 @@ const OutroSlide = ({
 
   return (
     <div className="space-y-6">
+
+
+
+      <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-slate-900">Walkthrough version you can accept or ignore</div>
+          </div>
+        </div>
+        <div className="mt-4">
+          <textarea
+            ref={editorRef}
+            value={editorValue ?? improvedCV ?? ''}
+            onChange={(e) => onEditorChange?.(e.target.value)}
+            spellCheck="false"
+            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-350px min-h-[350px] overflow-auto text-sm text-slate-800 font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-200 resize-y cv-editor-highlight"
+            style={{ maxHeight: '512px' }}
+            placeholder="Your improved CV will appear here after applying the changes."
+          />
+          <div className="text-xs text-slate-500 mt-2">
+            Tip: click any modification to jump to that spot in the editor and see the exact wording.
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-1">
+        <ModificationChat
+          onSend={onSendUserRequest}
+          isSending={isRequestingUserChange}
+          error={userRequestError}
+          onClearError={onClearUserRequestError}
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <button
+          onClick={onApplyAll}
+          className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-lg shadow-emerald-200 transition"
+        >
+          Apply all changes
+        </button>
+        <button
+          onClick={onRestart}
+          className="px-5 py-3 rounded-xl border border-slate-300 text-slate-800 hover:border-emerald-300 hover:text-emerald-800 transition"
+        >
+          Watch walkthrough
+        </button>
+        <button
+          onClick={onBack}
+          className="px-5 py-3 rounded-xl border border-slate-300 text-slate-700 hover:border-slate-400 transition"
+        >
+          Analyze another CV
+        </button>
+      </div>
 
       <div className="grid gap-4">
         <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
@@ -1246,54 +1690,8 @@ const OutroSlide = ({
         </div>
       </div>
 
-      <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <div className="text-xs uppercase font-semibold text-slate-500">Proposed CV draft</div>
-            <div className="text-slate-900 text-lg font-bold">Walkthrough version you can accept or ignore</div>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            Applied suggestions are highlighted in the panel
-          </div>
-        </div>
-        <div className="mt-4">
-          <textarea
-            ref={editorRef}
-            value={editorValue ?? improvedCV ?? ''}
-            onChange={(e) => onEditorChange?.(e.target.value)}
-            spellCheck="false"
-            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-350px min-h-[350px] overflow-auto text-sm text-slate-800 font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-200 resize-y cv-editor-highlight"
-            style={{ maxHeight: '512px' }}
-            placeholder="Your improved CV will appear here after applying the changes."
-          />
-          <div className="text-xs text-slate-500 mt-2">
-            Tip: click any modification to jump to that spot in the editor and see the exact wording.
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-3">
-        <button
-          onClick={onApplyAll}
-          className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-lg shadow-emerald-200 transition"
-        >
-          Apply all changes
-        </button>
-        <button
-          onClick={onRestart}
-          className="px-5 py-3 rounded-xl border border-slate-300 text-slate-800 hover:border-emerald-300 hover:text-emerald-800 transition"
-        >
-          Watch walkthrough
-        </button>
-        <button
-          onClick={onBack}
-          className="px-5 py-3 rounded-xl border border-slate-300 text-slate-700 hover:border-slate-400 transition"
-        >
-          Analyze another CV
-        </button>
-      </div>
     </div>
+
   );
 };
 
@@ -1342,6 +1740,7 @@ const LogConsole = ({ logs, onClear }) => {
     if (stage === 'analysis') return 'CV Analysis';
     if (stage === 'keywords') return 'Keyword Extraction';
     if (stage === 'story') return 'Narrative Intros';
+    if (stage === 'user-request') return 'User Request';
     return 'Log';
   };
 
@@ -1401,7 +1800,9 @@ const LogConsole = ({ logs, onClear }) => {
                           ? 'bg-emerald-100 text-emerald-700'
                           : log.stage === 'keywords'
                             ? 'bg-amber-100 text-amber-700'
-                            : 'bg-slate-100 text-slate-700'
+                            : log.stage === 'user-request'
+                              ? 'bg-sky-100 text-sky-700'
+                              : 'bg-slate-100 text-slate-700'
                       }`}>
                         {getStageLabel(log.stage)}
                       </span>
@@ -1840,7 +2241,11 @@ const Presentation = ({
   keywordSnapshot,
   decisions,
   onDecisionChange,
-  onApplyAll
+  onApplyAll,
+  onUserRequest,
+  isUserRequesting,
+  userRequestError,
+  onClearUserRequestError
 }) => {
   const [currentSlide, setCurrentSlide] = useState(-1);
   const [phase, setPhase] = useState('intro');
@@ -1851,6 +2256,7 @@ const Presentation = ({
   const { playTransition, playHighlight, speak, prefetchSpeech, cancelPrefetches, pruneCache, getSpeechKey, stop, isSpeaking, isLoading } = useAudioSystem(apiKey);
   const timeoutRef = useRef(null);
   const editorRef = useRef(null);
+  const prevChangeCountRef = useRef(changes.length);
 
   const newScore = Math.min(95, score + Math.round(changes.length * 5));
   const isOutro = currentSlide === changes.length;
@@ -1862,6 +2268,15 @@ const Presentation = ({
   useEffect(() => {
     setEditorValue(improvedCV || '');
   }, [improvedCV]);
+
+  useEffect(() => {
+    const prev = prevChangeCountRef.current;
+    if (currentSlide >= prev && changes.length > prev) {
+      setCurrentSlide(changes.length);
+      setPhase('intro');
+    }
+    prevChangeCountRef.current = changes.length;
+  }, [changes.length, currentSlide]);
 
   const refreshPrefetchWindow = useCallback((anchorIndex) => {
     if (!changes.length) {
@@ -2142,18 +2557,25 @@ const Presentation = ({
                 newScore={newScore}
                 totalChanges={changes.length}
                 onRestart={handleRestart}
-                onBack={onBack}
-                improvedCV={improvedCV || cvText}
-                keywordSnapshot={keywordSnapshot}
-                onApplyAll={onApplyAll}
-                editorRef={editorRef}
-                editorValue={editorValue}
-                onEditorChange={setEditorValue}
-              />
-            </div>
+              onBack={onBack}
+              improvedCV={improvedCV || cvText}
+              keywordSnapshot={keywordSnapshot}
+              onApplyAll={onApplyAll}
+              editorRef={editorRef}
+              editorValue={editorValue}
+              onEditorChange={setEditorValue}
+              changes={changes}
+              decisions={decisions}
+              onSelectChange={handleJumpToChange}
+              onSendUserRequest={onUserRequest}
+              isRequestingUserChange={isUserRequesting}
+              userRequestError={userRequestError}
+              onClearUserRequestError={onClearUserRequestError}
+            />
           </div>
-          <div className="w-[320px] sm:w-[360px] lg:w-[420px] overflow-y-auto pl-1">
-            <SuggestionReviewPanel
+        </div>
+        <div className="w-[320px] sm:w-[360px] lg:w-[420px] overflow-y-auto pl-1">
+          <SuggestionReviewPanel
               open
               variant="inline"
               suggestions={changes}
@@ -2777,6 +3199,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [apiKey, setApiKey] = useState('');
+  const [apiProvider, setApiProvider] = useState('openai');
   const [selectedVoice, setSelectedVoice] = useState('onyx');
   const [logs, setLogs] = useState([]);
   const [analysisProgress, setAnalysisProgress] = useState(null);
@@ -2789,6 +3212,8 @@ export default function App() {
   const [pendingAnalysis, setPendingAnalysis] = useState(null);
   const [keywordReviewOpen, setKeywordReviewOpen] = useState(false);
   const [keywordDraft, setKeywordDraft] = useState([]);
+  const [isUserRequesting, setIsUserRequesting] = useState(false);
+  const [userRequestError, setUserRequestError] = useState(null);
 
   const addLogEntry = useCallback((entry) => {
     setLogs((prev) => {
@@ -2811,12 +3236,13 @@ export default function App() {
 
   const clearLogs = useCallback(() => setLogs([]), []);
 
-  const handleAnalyze = async (cv, job, key, apiProvider, voice) => {
+  const handleAnalyze = async (cv, job, key, apiProviderChoice, voice) => {
     setIsLoading(true);
     setError(null);
     setCvText(cv);
     setJobDescription(job);
     setApiKey(key);
+    setApiProvider(apiProviderChoice);
     setSelectedVoice(voice);
     setImprovedCV(cv);
     setKeywordSnapshot(null);
@@ -2824,9 +3250,11 @@ export default function App() {
     setProposedKeywordSnapshot(null);
     setSuggestionDecisions({});
     setValidatedKeywords(null);
-    setPendingAnalysis({ cv, job, key, apiProvider, voice });
+    setPendingAnalysis({ cv, job, key, apiProvider: apiProviderChoice, voice });
     setKeywordDraft([]);
     setKeywordReviewOpen(false);
+    setUserRequestError(null);
+    setIsUserRequesting(false);
     setAnalysisProgress({
       stage: 'keywords',
       totalKeywords: null,
@@ -2836,7 +3264,7 @@ export default function App() {
     });
 
     try {
-      const extractedKeywords = await extractKeywords(job, key, apiProvider, addLogEntry);
+      const extractedKeywords = await extractKeywords(job, key, apiProviderChoice, addLogEntry);
       const validatedList = validateKeywords(extractedKeywords, job, cv);
 
       setKeywordDraft(validatedList.map((k) => k.keyword));
@@ -2864,6 +3292,7 @@ export default function App() {
     if (!pendingAnalysis) return;
 
     const { cv, job, key, apiProvider, voice } = pendingAnalysis;
+    setApiProvider(apiProvider);
     const cleaned = validateKeywords(
       Array.isArray(finalKeywords) && finalKeywords.length > 0 ? finalKeywords : keywordDraft,
       job,
@@ -2968,6 +3397,8 @@ export default function App() {
     setPendingAnalysis(null);
     setKeywordDraft([]);
     setJobDescription('');
+    setUserRequestError(null);
+    setIsUserRequesting(false);
   };
 
   useEffect(() => {
@@ -3018,6 +3449,81 @@ export default function App() {
     });
   };
 
+  const handleUserRequest = async (userText) => {
+    const request = (userText || '').trim();
+    if (!request) {
+      setUserRequestError('Please add a short request for the change.');
+      return;
+    }
+    if (!apiKey) {
+      setUserRequestError('Add your API key before requesting new modifications.');
+      return;
+    }
+    if (!cvText || !jobDescription) {
+      setUserRequestError('Run an analysis first so we can ground your request in the CV and job description.');
+      return;
+    }
+
+    setIsUserRequesting(true);
+    setUserRequestError(null);
+
+    try {
+      const { suggestions: rawSuggestions } = await generateUserRequestedChanges(
+        cvText,
+        jobDescription,
+        improvedCV || cvText,
+        request,
+        apiKey,
+        apiProvider,
+        changes,
+        addLogEntry
+      );
+
+      const baseText = cvText || '';
+      const draftText = improvedCV || proposedCV || cvText || '';
+      const existingSignature = new Set(changes.map((c) => `${c.original}→${c.replacement}`));
+      const now = Date.now();
+
+      const normalized = (rawSuggestions || [])
+        .map((s, idx) => {
+          if (!s || typeof s.original !== 'string' || !s.original.trim()) return null;
+          const signature = `${s.original}→${s.replacement}`;
+          if (existingSignature.has(signature)) return null;
+          const id = s.id && !changes.some((c) => c.id === s.id) ? s.id : `user-${now}-${idx}`;
+          let startIndex = baseText.indexOf(s.original);
+          if (startIndex === -1 && draftText) {
+            startIndex = draftText.indexOf(s.original);
+          }
+          if (startIndex === -1) return null;
+          return {
+            ...s,
+            id,
+            startIndex,
+            endIndex: startIndex + s.original.length
+          };
+        })
+        .filter(Boolean);
+
+      if (normalized.length === 0) {
+        throw new Error('No valid modifications found. Try a more specific request or mention the exact sentence to change.');
+      }
+
+      setChanges((prev) => [...prev, ...normalized]);
+      setSuggestionDecisions((prev) => {
+        const next = { ...prev };
+        normalized.forEach((s) => {
+          if (!next[s.id]) next[s.id] = 'pending';
+        });
+        return next;
+      });
+    } catch (err) {
+      setUserRequestError(err.message || 'Could not generate modifications from your request.');
+      throw err;
+    } finally {
+      setIsUserRequesting(false);
+    }
+  };
+
   const showPresentation = view === 'presentation' && changes.length > 0;
   const displayKeywordSnapshot = keywordSnapshot || proposedKeywordSnapshot;
   const displayImprovedCV = improvedCV || proposedCV || cvText;
@@ -3037,6 +3543,10 @@ export default function App() {
           decisions={suggestionDecisions}
           onDecisionChange={handleDecisionChange}
           onApplyAll={handleApplyAll}
+          onUserRequest={handleUserRequest}
+          isUserRequesting={isUserRequesting}
+          userRequestError={userRequestError}
+          onClearUserRequestError={() => setUserRequestError(null)}
         />
       ) : (
         <InputView onAnalyze={handleAnalyze} isLoading={isLoading} progress={analysisProgress} />
