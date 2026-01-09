@@ -1521,7 +1521,7 @@ const OutroSlide = ({
   onEditorChange,
   changes,
   decisions,
-  onSelectChange,
+  onDecisionChange,
   onSendUserRequest,
   isRequestingUserChange,
   userRequestError,
@@ -1552,57 +1552,8 @@ const OutroSlide = ({
       <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <div className="text-slate-900">Walkthrough version you can accept or ignore</div>
-          </div>
-        </div>
-        <div className="mt-4">
-          <textarea
-            ref={editorRef}
-            value={editorValue ?? improvedCV ?? ''}
-            onChange={(e) => onEditorChange?.(e.target.value)}
-            spellCheck="false"
-            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-350px min-h-[350px] overflow-auto text-sm text-slate-800 font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-200 resize-y cv-editor-highlight"
-            style={{ maxHeight: '512px' }}
-            placeholder="Your improved CV will appear here after applying the changes."
-          />
-          <div className="text-xs text-slate-500 mt-2">
-            Tip: click any modification to jump to that spot in the editor and see the exact wording.
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-1">
-        <ModificationChat
-          onSend={onSendUserRequest}
-          isSending={isRequestingUserChange}
-          error={userRequestError}
-          onClearError={onClearUserRequestError}
-        />
-      </div>
-
-      <div className="flex flex-wrap gap-3">
-        <button
-          onClick={onApplyAll}
-          className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-lg shadow-emerald-200 transition"
-        >
-          Apply all changes
-        </button>
-        <button
-          onClick={onRestart}
-          className="px-5 py-3 rounded-xl border border-slate-300 text-slate-800 hover:border-emerald-300 hover:text-emerald-800 transition"
-        >
-          Watch walkthrough
-        </button>
-        <button
-          onClick={onBack}
-          className="px-5 py-3 rounded-xl border border-slate-300 text-slate-700 hover:border-slate-400 transition"
-        >
-          Analyze another CV
-        </button>
-      </div>
-
-      <div className="grid gap-4">
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+          <div className="grid gap-4">
+        <div>
           <div className="text-xs uppercase font-semibold text-slate-500">Keywords covered</div>
           <div className="flex items-center gap-4 mt-3">
             <div className="flex-1">
@@ -1635,61 +1586,30 @@ const OutroSlide = ({
           {missingAfterList.length === 0 && (
             <div className="mt-3 text-sm font-semibold text-emerald-700">Nice—no missing keywords remain.</div>
           )}
-          {showAllMissingKeywords && (
-            <div className="mt-4 p-4 rounded-2xl bg-slate-50 border border-slate-200">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-xs uppercase font-semibold text-slate-600">Missing keywords detail</div>
-                <button
-                  type="button"
-                  onClick={() => setShowAllMissingKeywords(false)}
-                  className="text-xs font-semibold text-slate-600 hover:text-emerald-700 px-2 py-1 rounded-lg border border-slate-200 hover:border-emerald-200 transition"
-                >
-                  Close
-                </button>
-              </div>
-              <div className="grid sm:grid-cols-2 gap-3 mt-3">
-                <div>
-                  <div className="text-[11px] uppercase font-semibold text-slate-500 mb-2">
-                    Before your edits ({missingBeforeList.length})
-                  </div>
-                  {missingBeforeList.length === 0 ? (
-                    <div className="text-xs text-emerald-700 font-semibold bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg inline-block">
-                      Nothing was missing.
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {missingBeforeList.map((kw) => (
-                        <span key={kw} className="px-2 py-1 rounded-full bg-white border border-slate-200 text-xs text-slate-700">
-                          {kw}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <div className="text-[11px] uppercase font-semibold text-slate-500 mb-2">
-                    Still missing now ({missingAfterList.length})
-                  </div>
-                  {missingAfterList.length === 0 ? (
-                    <div className="text-xs text-emerald-700 font-semibold bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg inline-block">
-                      All covered—great job!
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {missingAfterList.map((kw) => (
-                        <span key={kw} className="px-2 py-1 rounded-full bg-amber-50 border border-amber-100 text-xs text-amber-800">
-                          {kw}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+        </div>
+      </div>
+          </div>
+        </div>
+        <div className="mt-4">
+          <CorrectionEditor
+            value={editorValue ?? improvedCV ?? ''}
+            onChange={(next) => onEditorChange?.(next)}
+            editorRef={editorRef}
+            changes={changes}
+            decisions={decisions}
+            onDecisionChange={onDecisionChange}
+          />
         </div>
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-1">
+        <ModificationChat
+          onSend={onSendUserRequest}
+          isSending={isRequestingUserChange}
+          error={userRequestError}
+          onClearError={onClearUserRequestError}
+        />
+      </div>
     </div>
 
   );
@@ -2022,6 +1942,8 @@ const SuggestionReviewPanel = ({
   onDecisionChange,
   onApplyAll,
   onSelectChange,
+  onRestart,
+  onBack,
   variant = 'modal'
 }) => {
   if (!open) return null;
@@ -2062,20 +1984,14 @@ const SuggestionReviewPanel = ({
 
   const panelContent = (
     <div className={panelClasses}>
-      <div className="p-5 border-b border-slate-200 flex items-center justify-between">
-        <div>
-          <div className="text-xs uppercase font-semibold text-slate-500">Recommended modifications</div>
-          <div className="text-lg font-bold text-slate-900">
-            {acceptedCount} accepted · {pendingCount} pending · {skippedCount} skipped · {rejectedCount} rejected
+      <div className="p-5 border-b border-slate-200 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-xs uppercase font-semibold text-slate-500">Recommended modifications</div>
+            <div className="text-lg font-bold text-slate-900">
+              {acceptedCount} accepted · {pendingCount} pending · {skippedCount} skipped · {rejectedCount} rejected
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onApplyAll}
-            className="px-3 py-2 rounded-lg bg-emerald-500 text-white text-sm font-semibold shadow-sm hover:bg-emerald-600 transition"
-          >
-            Apply all of them
-          </button>
           {!isInline && (
             <button
               onClick={onClose}
@@ -2083,6 +1999,30 @@ const SuggestionReviewPanel = ({
               aria-label="Close review panel"
             >
               ✕
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={onApplyAll}
+            className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold shadow-sm hover:bg-emerald-700 transition"
+          >
+            Apply all changes
+          </button>
+          {onRestart && (
+            <button
+              onClick={onRestart}
+              className="px-3 py-2 rounded-lg bg-white text-slate-800 text-sm font-semibold border border-slate-200 hover:border-emerald-200 hover:text-emerald-800 transition"
+            >
+              Watch walkthrough
+            </button>
+          )}
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="px-3 py-2 rounded-lg bg-white text-slate-700 text-sm font-semibold border border-slate-200 hover:border-slate-300 transition"
+            >
+              Analyze another CV
             </button>
           )}
         </div>
@@ -2219,6 +2159,267 @@ const SuggestionReviewPanel = ({
         onClick={onClose}
       />
       {panelContent}
+    </div>
+  );
+};
+
+// ============================================
+// MAIN PRESENTATION COMPONENT
+// ============================================
+
+const CorrectionEditor = ({
+  value = '',
+  onChange,
+  editorRef,
+  changes = [],
+  decisions = {},
+  onDecisionChange
+}) => {
+  const overlayRef = useRef(null);
+  const internalEditorRef = useRef(null);
+  const resolvedEditorRef = editorRef || internalEditorRef;
+  const [activeChangeId, setActiveChangeId] = useState(null);
+  const [hasUserSelected, setHasUserSelected] = useState(false);
+
+  const highlightByType = useMemo(() => ({
+    correctness: 'bg-emerald-200/60 border-emerald-300/70',
+    clarity: 'bg-sky-200/60 border-sky-300/70',
+    engagement: 'bg-indigo-200/60 border-indigo-300/70',
+    delivery: 'bg-amber-200/60 border-amber-300/70',
+    keyword: 'bg-teal-200/60 border-teal-300/70'
+  }), []);
+
+  const decisionHalo = useMemo(() => ({
+    accepted: 'ring-2 ring-emerald-300/70 shadow-[0_0_0_1px_rgba(16,185,129,0.35)]',
+    pending: 'ring-2 ring-amber-200/70 shadow-[0_0_0_1px_rgba(251,191,36,0.35)]',
+    rejected: 'ring-2 ring-rose-200/70 shadow-[0_0_0_1px_rgba(244,63,94,0.35)]',
+    skipped: 'ring-1 ring-slate-200/80 shadow-[0_0_0_1px_rgba(148,163,184,0.25)]'
+  }), []);
+
+  const safeValue = typeof value === 'string' ? value : '';
+
+  const segments = useMemo(() => {
+    if (!Array.isArray(changes) || changes.length === 0 || !safeValue) return [];
+
+    const collected = [];
+    const seenRanges = new Set();
+
+    changes.forEach((change) => {
+      const decision = decisions[change.id] || 'pending';
+      const useReplacement = decision !== 'rejected' && decision !== 'skipped';
+      const candidates = [];
+      const replacementText = typeof change.replacement === 'string' ? change.replacement : '';
+      const originalText = typeof change.original === 'string' ? change.original : '';
+
+      if (useReplacement && replacementText) candidates.push(replacementText);
+      if (originalText) candidates.push(originalText);
+      if (!useReplacement && replacementText) candidates.push(replacementText);
+
+      let matchIndex = -1;
+      let matchedText = '';
+
+      for (const candidate of candidates) {
+        if (!candidate) continue;
+        const preferredStart = typeof change.startIndex === 'number'
+          ? safeValue.indexOf(candidate, Math.max(0, Math.min(change.startIndex, Math.max(safeValue.length - 1, 0))))
+          : -1;
+        const idx = preferredStart !== -1 ? preferredStart : safeValue.indexOf(candidate);
+        if (idx !== -1) {
+          matchIndex = idx;
+          matchedText = candidate;
+          break;
+        }
+      }
+
+      if (matchIndex === -1 && typeof change.startIndex === 'number') {
+        matchIndex = Math.max(0, Math.min(change.startIndex, Math.max(safeValue.length - 1, 0)));
+        matchedText = replacementText || originalText || safeValue.slice(matchIndex, matchIndex + 1);
+      }
+
+      const endIndex = matchIndex + matchedText.length;
+      if (matchIndex < 0 || endIndex <= matchIndex) return;
+
+      const rangeKey = `${matchIndex}-${endIndex}`;
+      if (seenRanges.has(rangeKey)) return;
+      seenRanges.add(rangeKey);
+
+      collected.push({
+        start: matchIndex,
+        end: endIndex,
+        change,
+        matchedText
+      });
+    });
+
+    return collected
+      .filter((seg) => seg.start >= 0 && seg.end > seg.start)
+      .sort((a, b) => a.start - b.start || b.end - a.end);
+  }, [changes, decisions, safeValue]);
+
+  useEffect(() => {
+    if (!activeChangeId && segments.length > 0 && !hasUserSelected) {
+      setActiveChangeId(segments[0].change.id);
+    } else if (activeChangeId && !segments.some((seg) => seg.change.id === activeChangeId)) {
+      setActiveChangeId(null);
+    }
+  }, [activeChangeId, hasUserSelected, segments]);
+
+  useEffect(() => {
+    setHasUserSelected(false);
+  }, [segments.length, safeValue]);
+
+  const syncScroll = useCallback(() => {
+    if (!overlayRef.current || !resolvedEditorRef?.current) return;
+    overlayRef.current.scrollTop = resolvedEditorRef.current.scrollTop;
+    overlayRef.current.scrollLeft = resolvedEditorRef.current.scrollLeft;
+  }, [resolvedEditorRef]);
+
+  const handleCursorSelection = useCallback((event) => {
+    const pos = typeof event?.target?.selectionStart === 'number' ? event.target.selectionStart : 0;
+    const match = segments.find((seg) => pos >= seg.start && pos <= seg.end);
+    setHasUserSelected(true);
+    if (match) {
+      setActiveChangeId(match.change.id);
+    } else {
+      setActiveChangeId(null);
+    }
+  }, [segments]);
+
+  const renderedSegments = useMemo(() => {
+    const output = [];
+    let cursor = 0;
+
+    segments.forEach((seg, idx) => {
+      if (seg.start > cursor) {
+        output.push(safeValue.slice(cursor, seg.start));
+      }
+
+      const decision = decisions[seg.change.id] || 'pending';
+      const baseClass = highlightByType[seg.change.type] || highlightByType.clarity;
+      const halo = decisionHalo[decision] || decisionHalo.pending;
+
+      output.push(
+        <span
+          key={`${seg.change.id}-${idx}`}
+          className={`relative inline-block rounded-md px-0.5 py-0.5 text-transparent ${baseClass} ${halo}`}
+        >
+          {safeValue.slice(seg.start, seg.end)}
+        </span>
+      );
+
+      cursor = seg.end;
+    });
+
+    if (cursor < safeValue.length) {
+      output.push(safeValue.slice(cursor));
+    }
+
+    return output;
+  }, [decisions, highlightByType, decisionHalo, safeValue, segments]);
+
+  const activeChange = activeChangeId
+    ? changes.find((c) => c.id === activeChangeId)
+    : null;
+  const activeDecision = activeChange ? (decisions[activeChange.id] || 'pending') : 'pending';
+  const activeStyle = activeChange ? (categoryStyles[activeChange.type] || categoryStyles.clarity) : null;
+
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <div
+          ref={overlayRef}
+          className="absolute inset-0 overflow-auto rounded-2xl pointer-events-none"
+          aria-hidden="true"
+        >
+          <pre className="min-h-[350px] w-full p-4 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-transparent">
+            {renderedSegments}
+          </pre>
+        </div>
+        <textarea
+          ref={resolvedEditorRef}
+          value={safeValue}
+          onChange={(e) => onChange?.(e.target.value)}
+          onScroll={syncScroll}
+          onClick={handleCursorSelection}
+          onKeyUp={handleCursorSelection}
+          onSelect={handleCursorSelection}
+          spellCheck="false"
+          className="w-full bg-white/70 border border-slate-200 rounded-2xl p-4 max-h-350px min-h-[350px] overflow-auto text-sm text-slate-800 font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-200 resize-y cv-editor-highlight relative"
+          style={{ maxHeight: '512px' }}
+          placeholder="Your improved CV will appear here after applying the changes."
+        />
+      </div>
+      <div className="text-xs text-slate-500">
+        Corrected areas are tinted in the editor. Click any highlight (or place the cursor inside it) to inspect, accept, or reject the change.
+      </div>
+
+      {activeChange && (
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border bg-white"
+                  style={{
+                    color: activeStyle?.text || '#334155',
+                    borderColor: activeStyle?.bar || '#e2e8f0'
+                  }}
+                >
+                  <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${activeStyle?.gradient || 'from-emerald-400 to-green-500'}`} />
+                  {activeStyle?.label || 'Correction'}
+                </span>
+                <span className="text-xs px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 capitalize text-slate-700">
+                  {activeDecision}
+                </span>
+              </div>
+              <div className="text-sm font-semibold text-slate-900">{activeChange.title}</div>
+              <p className="text-sm text-slate-600">{activeChange.description}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onDecisionChange?.(activeChange.id, 'accepted')}
+                className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
+                  activeDecision === 'accepted'
+                    ? 'bg-emerald-500 text-white shadow-sm'
+                    : 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                }`}
+              >
+                Accept
+              </button>
+              <button
+                type="button"
+                onClick={() => onDecisionChange?.(activeChange.id, 'rejected')}
+                className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
+                  activeDecision === 'rejected'
+                    ? 'bg-rose-500 text-white border-rose-500'
+                    : 'bg-white border border-rose-200 text-rose-700 hover:bg-rose-50'
+                }`}
+              >
+                Reject
+              </button>
+              <button
+                type="button"
+                onClick={() => onDecisionChange?.(activeChange.id, 'pending')}
+                className="px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition"
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3 text-sm">
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-100 break-words">
+              <div className="text-[11px] uppercase font-semibold text-rose-700 mb-1">Original</div>
+              <div className="text-rose-800">{activeChange.original}</div>
+            </div>
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 break-words">
+              <div className="text-[11px] uppercase font-semibold text-emerald-700 mb-1">Replacement</div>
+              <div className="text-emerald-900 font-medium">{activeChange.replacement}</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -2549,33 +2750,8 @@ const Presentation = ({
     return (
       <div className="fixed inset-0 bg-slate-50 text-slate-900">
         <div className="flex h-full gap-4 px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex-1 min-w-0 overflow-y-auto pr-1">
-            <div className="max-w-5xl w-full mx-auto space-y-6 pb-10">
-              <OutroSlide
-                isActive
-                score={score}
-                newScore={newScore}
-                totalChanges={changes.length}
-                onRestart={handleRestart}
-              onBack={onBack}
-              improvedCV={improvedCV || cvText}
-              keywordSnapshot={keywordSnapshot}
-              onApplyAll={onApplyAll}
-              editorRef={editorRef}
-              editorValue={editorValue}
-              onEditorChange={setEditorValue}
-              changes={changes}
-              decisions={decisions}
-              onSelectChange={handleJumpToChange}
-              onSendUserRequest={onUserRequest}
-              isRequestingUserChange={isUserRequesting}
-              userRequestError={userRequestError}
-              onClearUserRequestError={onClearUserRequestError}
-            />
-          </div>
-        </div>
-        <div className="w-[320px] sm:w-[360px] lg:w-[420px] overflow-y-auto pl-1">
-          <SuggestionReviewPanel
+          <div className="w-[320px] sm:w-[360px] lg:w-[420px] overflow-y-auto pr-1">
+            <SuggestionReviewPanel
               open
               variant="inline"
               suggestions={changes}
@@ -2583,7 +2759,34 @@ const Presentation = ({
               onDecisionChange={onDecisionChange}
               onApplyAll={onApplyAll}
               onSelectChange={handleJumpToChange}
+              onRestart={handleRestart}
+              onBack={onBack}
             />
+          </div>
+          <div className="flex-1 min-w-0 overflow-y-auto pl-1">
+            <div className="max-w-5xl w-full mx-auto space-y-6 pb-10">
+              <OutroSlide
+                isActive
+                score={score}
+                newScore={newScore}
+                totalChanges={changes.length}
+                onRestart={handleRestart}
+                onBack={onBack}
+                improvedCV={improvedCV || cvText}
+                keywordSnapshot={keywordSnapshot}
+                onApplyAll={onApplyAll}
+                editorRef={editorRef}
+                editorValue={editorValue}
+                onEditorChange={setEditorValue}
+                changes={changes}
+                decisions={decisions}
+                onDecisionChange={onDecisionChange}
+                onSendUserRequest={onUserRequest}
+                isRequestingUserChange={isUserRequesting}
+                userRequestError={userRequestError}
+                onClearUserRequestError={onClearUserRequestError}
+              />
+            </div>
           </div>
         </div>
       </div>
