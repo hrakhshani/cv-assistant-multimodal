@@ -1332,179 +1332,8 @@ const IntroSlide = ({
 };
 
 // ============================================
-// OUTRO SLIDE
+// CHATGPT-STYLE OUTRO SLIDE
 // ============================================
-
-const ModificationSummary = ({ changes = [], decisions = {}, onSelectChange }) => {
-  const total = changes.length;
-  const accepted = changes.filter((c) => decisions[c.id] === 'accepted').length;
-  const pending = total - accepted - changes.filter((c) => decisions[c.id] === 'rejected').length - changes.filter((c) => decisions[c.id] === 'skipped').length;
-  const highlight = changes.slice(0, 4);
-
-  return (
-    <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 h-full">
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <div>
-          <div className="text-xs uppercase font-semibold text-slate-500">Modification summary</div>
-          <div className="text-lg font-bold text-slate-900">{total} total · {accepted} accepted · {pending} pending</div>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <span className="w-2 h-2 rounded-full bg-emerald-400" /> tap a card to jump in the editor
-        </div>
-      </div>
-      <div className="space-y-3">
-        {highlight.length === 0 && (
-          <div className="text-sm text-slate-600">No modifications yet. Use the chat to request one.</div>
-        )}
-        {highlight.map((change) => {
-          const status = decisions[change.id] || 'pending';
-          const badgeStyle = categoryStyles[change.type] || categoryStyles.clarity;
-          return (
-            <button
-              key={change.id}
-              onClick={() => onSelectChange?.(change)}
-              className="w-full text-left border border-slate-200 rounded-2xl p-4 hover:border-emerald-200 hover:shadow-md transition bg-white"
-            >
-              <div className="flex items-center justify-between gap-3 mb-2">
-                <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${badgeStyle.gradient}`} />
-                  <span className="text-xs font-semibold uppercase text-slate-600">{badgeStyle.label}</span>
-                </div>
-                <span className="text-[10px] px-2 py-1 rounded-lg border bg-slate-50 text-slate-600 capitalize">
-                  {status}
-                </span>
-              </div>
-              <div className="text-sm font-semibold text-slate-900">{change.title}</div>
-              <p className="text-sm text-slate-600 mt-1 truncate">{change.description}</p>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-const ModificationChat = ({ onSend, isSending, error, onClearError }) => {
-  const [message, setMessage] = useState('');
-  const [localError, setLocalError] = useState('');
-  const [lastSent, setLastSent] = useState('');
-  const { isSupported, isListening, transcript, error: voiceError, startListening, stopListening, resetTranscript } = useSpeechToText();
-
-  useEffect(() => {
-    if (isListening) {
-      setMessage(transcript);
-    }
-  }, [isListening, transcript]);
-
-  const handleSend = async () => {
-    const text = message.trim();
-    if (!text) {
-      setLocalError('Add a quick note about what you want changed.');
-      return;
-    }
-    setLocalError('');
-    try {
-      await onSend?.(text);
-      setLastSent(text);
-      setMessage('');
-      resetTranscript();
-    } catch (err) {
-      setLocalError(err?.message || 'Could not send your request.');
-    }
-  };
-
-  const toggleListening = () => {
-    if (!isSupported) return;
-    if (isListening) stopListening();
-    else {
-      resetTranscript();
-      setMessage('');
-      startListening();
-    }
-  };
-
-  return (
-    <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6 h-full">
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <div>
-          <div className="text-xs uppercase font-semibold text-slate-500">Your tweak requests</div>
-          <div className="text-lg font-bold text-slate-900">Chat or speak a change you want</div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={toggleListening}
-            disabled={!isSupported}
-            className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${isListening ? 'bg-amber-100 border-amber-200 text-amber-800' : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-200 hover:text-emerald-800 disabled:opacity-50'}`}
-          >
-            {isListening ? 'Stop voice' : 'Voice chat'}
-          </button>
-          {!isSupported && (
-            <span className="text-[11px] text-slate-500">Voice input not supported in this browser.</span>
-          )}
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <textarea
-          value={message}
-          onChange={(e) => {
-            setMessage(e.target.value);
-            setLocalError('');
-            onClearError?.();
-          }}
-          placeholder="Ask for changes: e.g., “Rewrite the leadership bullet to stress outcomes.”"
-          className="w-full min-h-[120px] p-4 rounded-2xl border border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition text-sm"
-        />
-        {isListening && (
-          <div className="flex items-center gap-2 text-xs text-amber-700">
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-            Listening... speak naturally and tap “Stop voice” when you’re done.
-          </div>
-        )}
-        {voiceError && (
-          <div className="text-xs text-rose-700 bg-rose-50 border border-rose-100 px-3 py-2 rounded-xl">
-            {voiceError}
-          </div>
-        )}
-        {(localError || error) && (
-          <div className="text-xs text-rose-700 bg-rose-50 border border-rose-100 px-3 py-2 rounded-xl flex items-center justify-between">
-            <span>{localError || error}</span>
-            <button
-              type="button"
-              onClick={() => {
-                setLocalError('');
-                onClearError?.();
-              }}
-              className="text-[11px] font-semibold text-rose-700 hover:text-rose-900"
-            >
-              Clear
-            </button>
-          </div>
-        )}
-        {lastSent && (
-          <div className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-2 rounded-xl">
-            Sent: “{lastSent}”
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between gap-3 mt-4">
-        <div className="text-xs text-slate-500">
-          We’ll return new modifications in the same format so they appear on the right panel.
-        </div>
-        <button
-          type="button"
-          onClick={handleSend}
-          disabled={isSending}
-          className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold shadow-lg shadow-emerald-200 disabled:opacity-60 transition"
-        >
-          {isSending ? 'Generating…' : 'Send request'}
-        </button>
-      </div>
-    </div>
-  );
-};
 
 const OutroSlide = ({ 
   isActive, 
@@ -1527,67 +1356,109 @@ const OutroSlide = ({
   userRequestError,
   onClearUserRequestError
 }) => {
-  const [showAllMissingKeywords, setShowAllMissingKeywords] = useState(false);
-
-  const totalKeywords = keywordSnapshot?.total || 0;
-  const missingBefore = keywordSnapshot?.before || 0;
-  const missingAfter = keywordSnapshot?.after || 0;
-  const missingAfterList = keywordSnapshot?.missingAfterList || [];
-  const missingBeforeList = keywordSnapshot?.missingBeforeList || [];
-  const delta = Math.max(0, missingBefore - missingAfter);
-  const visibleMissingAfter = showAllMissingKeywords ? missingAfterList : missingAfterList.slice(0, 6);
-  const hasExtraMissingAfter = missingAfterList.length > visibleMissingAfter.length;
+  const [message, setMessage] = useState('');
+  const [showKeywords, setShowKeywords] = useState(false);
+  const { isSupported, isListening, transcript, error: voiceError, startListening, stopListening, resetTranscript } = useSpeechToText();
 
   useEffect(() => {
-    setShowAllMissingKeywords(false);
-  }, [missingAfter, missingBefore]);
+    if (isListening) {
+      setMessage(transcript);
+    }
+  }, [isListening, transcript]);
+
+  const handleSend = async () => {
+    const text = message.trim();
+    if (!text) return;
+    
+    try {
+      await onSendUserRequest?.(text);
+      setMessage('');
+      resetTranscript();
+    } catch (err) {
+      // Error is handled by parent
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const toggleListening = () => {
+    if (!isSupported) return;
+    if (isListening) stopListening();
+    else {
+      resetTranscript();
+      setMessage('');
+      startListening();
+    }
+  };
 
   if (!isActive) return null;
 
+  const totalKeywords = keywordSnapshot?.total || 0;
+  const missingAfter = keywordSnapshot?.after || 0;
+  const missingAfterList = keywordSnapshot?.missingAfterList || [];
+
   return (
-    <div className="space-y-6">
-      <div className="rounded-3xl bg-white border border-slate-200 shadow-sm p-6">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-          <div className="grid gap-4">
-        <div>
-        <div className="text-xs uppercase font-semibold text-slate-500">Keywords covered</div>
-          <div className="flex items-center gap-4 mt-3">
-            <div className="flex-1">
-              <div className="text-lg font-semibold text-slate-900">{totalKeywords} total</div>
-              <div className="text-xs text-slate-500 mt-1">From the job description</div>
+    <div className="h-full flex flex-col bg-gray-50">
+      {/* Compact Top Header - Fixed */}
+      <div className="flex-shrink-0 border-b border-gray-200 bg-white shadow-sm">
+        <div className="w-full px-3 py-2 flex items-center justify-between">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+          
+          <div className="flex items-center gap-3">
+            {missingAfterList.length > 0 && (
+              <button
+                onClick={() => setShowKeywords(!showKeywords)}
+                className="flex items-center gap-2 px-2.5 py-1.5 text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100 transition"
+              >
+                <span className="font-medium">{missingAfterList.length} missing keywords</span>
+                <svg className={`w-3 h-3 transition-transform ${showKeywords ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            )}
+            <div className="text-xs text-gray-500">
+              Keywords: <span className="font-semibold text-gray-900">{totalKeywords - missingAfter}/{totalKeywords}</span>
             </div>
-            <div className="flex-1">
-              <div className="text-lg font-semibold text-amber-700">{missingBefore} missing → {missingAfter}</div>
-              <div className="text-xs text-slate-500 mt-1">Before vs. after your edits</div>
-            </div>
+            <button
+              onClick={onApplyAll}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg transition"
+            >
+              Accept all
+            </button>
           </div>
-          {missingAfterList.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {visibleMissingAfter.map((kw) => (
-                <span key={kw} className="px-2 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-100 text-xs">
+        </div>
+        
+        {/* Collapsible Keyword Banner */}
+        {showKeywords && missingAfterList.length > 0 && (
+          <div className="px-3 py-2 bg-amber-50 border-t border-amber-100">
+            <div className="flex flex-wrap gap-1.5">
+              {missingAfterList.map((kw) => (
+                <span key={kw} className="px-2 py-0.5 bg-white border border-amber-200 text-amber-800 rounded text-xs">
                   {kw}
                 </span>
               ))}
-              {(hasExtraMissingAfter || showAllMissingKeywords) && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllMissingKeywords((prev) => !prev)}
-                  className="px-2 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200 text-xs hover:border-emerald-300 hover:text-emerald-800 transition"
-                >
-                  {showAllMissingKeywords ? 'Hide list' : `+${missingAfterList.length - 6} more`}
-                </button>
-              )}
             </div>
-          )}
-          {missingAfterList.length === 0 && (
-            <div className="mt-3 text-sm font-semibold text-emerald-700">Nice—no missing keywords remain.</div>
-          )}
-        </div>
-      </div>
           </div>
-        </div>
-        <div className="mt-4">
+        )}
+      </div>
+
+      {/* Main Content Area - Maximum Space for Editor */}
+      <div className="flex-1 overflow-y-auto bg-white">
+        <div className="h-full">
+          {/* Full-Width Text Editor */}
           <CorrectionEditor
             value={editorValue ?? improvedCV ?? ''}
             onChange={(next) => onEditorChange?.(next)}
@@ -1599,16 +1470,105 @@ const OutroSlide = ({
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-1">
-        <ModificationChat
-          onSend={onSendUserRequest}
-          isSending={isRequestingUserChange}
-          error={userRequestError}
-          onClearError={onClearUserRequestError}
-        />
+      {/* Floating Bottom Input Bar - ChatGPT Style */}
+      <div className="flex-shrink-0">
+        <div className="w-full px-4 pb-4 pt-2 bg-white">
+          <div className="max-w-3xl mx-auto">
+            {/* Floating Input Container */}
+            <div className="relative bg-white border border-gray-300 rounded-2xl shadow-xl hover:shadow-2xl transition-shadow">
+              <div className="flex items-end gap-2 p-2">
+                <div className="flex-1 min-h-[44px] flex items-center">
+                  <textarea
+                    value={message}
+                    onChange={(e) => {
+                      setMessage(e.target.value);
+                      onClearUserRequestError?.();
+                    }}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Request changes..."
+                    className="w-full px-3 py-2 bg-transparent text-[15px] text-gray-900 placeholder-gray-400 outline-none resize-none"
+                    rows={1}
+                    style={{ 
+                      minHeight: '24px', 
+                      maxHeight: '200px',
+                      lineHeight: '24px'
+                    }}
+                  />
+                </div>
+
+                {/* Action Buttons Group */}
+                <div className="flex items-center gap-1">
+                  {/* Voice Button */}
+                  {isSupported && (
+                    <button
+                      type="button"
+                      onClick={toggleListening}
+                      className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
+                        isListening
+                          ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                          : 'hover:bg-gray-100 text-gray-500'
+                      }`}
+                      title={isListening ? 'Stop' : 'Voice'}
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                      </svg>
+                    </button>
+                  )}
+
+                  {/* Send Button */}
+                  <button
+                    type="button"
+                    onClick={handleSend}
+                    disabled={isRequestingUserChange || !message.trim()}
+                    className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
+                      message.trim() && !isRequestingUserChange
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    }`}
+                    title="Send"
+                  >
+                    {isRequestingUserChange ? (
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14m-7-7l7 7-7 7" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+              
+              {/* Status Messages - Inside the floating container */}
+              {(isListening || userRequestError || voiceError) && (
+                <div className="px-4 pb-2 pt-0">
+                  {isListening && (
+                    <div className="flex items-center gap-1.5 text-xs text-amber-700">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                      Listening...
+                    </div>
+                  )}
+                  
+                  {(userRequestError || voiceError) && !isListening && (
+                    <div className="text-xs text-red-600">
+                      {userRequestError || voiceError}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Optional: Hint text below */}
+            <div className="mt-2 text-center text-xs text-gray-400">
+              Press <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-300 rounded text-[10px]">Enter</kbd> to send
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-
   );
 };
 
@@ -1809,7 +1769,7 @@ const KeywordReviewModal = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
           <div>
             <div className="text-xs uppercase font-semibold text-slate-500">Step 1 · Validate keywords</div>
-            <div className="text-lg font-bold text-slate-900">Confirm the terms we’ll optimize for</div>
+            <div className="text-lg font-bold text-slate-900">Confirm the terms we'll optimize for</div>
             <p className="text-sm text-slate-600">
               Add missing terms from the job post or remove any noise before we draft your personalized changes.
             </p>
@@ -1838,7 +1798,7 @@ const KeywordReviewModal = ({
             <div className="p-4 rounded-2xl border border-amber-100 bg-amber-50/70">
               <div className="text-xs uppercase font-semibold text-amber-700">Missing from CV</div>
               <div className="text-2xl font-bold text-amber-900 mt-1">{missingInCV.length}</div>
-              <div className="text-xs text-amber-700 mt-1">We’ll prioritize these</div>
+              <div className="text-xs text-amber-700 mt-1">We'll prioritize these</div>
             </div>
           </div>
 
@@ -1862,7 +1822,7 @@ const KeywordReviewModal = ({
             </div>
             {notInJob.length > 0 && (
               <p className="text-xs text-amber-700 mt-2">
-                {notInJob.length} term{notInJob.length === 1 ? '' : 's'} aren’t in the job description; they’ll be deprioritized.
+                {notInJob.length} term{notInJob.length === 1 ? '' : 's'} aren't in the job description; they'll be deprioritized.
               </p>
             )}
           </div>
@@ -1903,7 +1863,7 @@ const KeywordReviewModal = ({
 
           <div className="flex items-center justify-between gap-3 pt-2">
             <div className="text-xs text-slate-500">
-              We’ll use only the confirmed keywords to align your CV with the job description.
+              We'll use only the confirmed keywords to align your CV with the job description.
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -1927,167 +1887,9 @@ const KeywordReviewModal = ({
   );
 };
 
-// ============================================
-// SUGGESTION REVIEW PANEL
-// ============================================
-
-const SuggestionReviewPanel = ({
-  open,
-  onClose,
-  suggestions = [],
-  decisions = {},
-  onDecisionChange,
-  onApplyAll,
-  onSelectChange,
-  onRestart,
-  onBack,
-  variant = 'modal'
-}) => {
-  if (!open) return null;
-
-  const isInline = variant === 'inline';
-  const panelWidth = isInline ? 'w-full' : 'w-full max-w-xl';
-  const panelHeight = isInline ? 'max-h-[calc(100vh-3rem)]' : 'h-full';
-  const panelClasses = isInline
-    ? `${panelWidth} ${panelHeight} bg-white border border-slate-200 rounded-2xl shadow-xl flex flex-col overflow-hidden`
-    : `${panelWidth} h-full bg-white border-l border-slate-200 shadow-2xl flex flex-col`;
-
-  const decisionOrder = { accepted: 0, pending: 1, skipped: 2, rejected: 3 };
-  const importanceOrder = { high: 0, medium: 1, low: 2 };
-
-  const acceptedCount = suggestions.filter((s) => decisions[s.id] === 'accepted').length;
-  const skippedCount = suggestions.filter((s) => decisions[s.id] === 'skipped').length;
-  const rejectedCount = suggestions.filter((s) => decisions[s.id] === 'rejected').length;
-  const pendingCount = Math.max(0, suggestions.length - acceptedCount - skippedCount - rejectedCount);
-
-  const sorted = [...suggestions].sort((a, b) => {
-    const decisionRankA = decisionOrder[decisions[a.id] || 'pending'];
-    const decisionRankB = decisionOrder[decisions[b.id] || 'pending'];
-    if (decisionRankA !== decisionRankB) return decisionRankA - decisionRankB;
-
-    const importanceRankA = importanceOrder[a.importance] ?? 3;
-    const importanceRankB = importanceOrder[b.importance] ?? 3;
-    if (importanceRankA !== importanceRankB) return importanceRankA - importanceRankB;
-
-    return (a.title || '').localeCompare(b.title || '');
-  });
-
-  const decisionStyles = {
-    accepted: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    skipped: 'bg-amber-50 text-amber-700 border-amber-200',
-    rejected: 'bg-rose-50 text-rose-700 border-rose-200',
-    pending: 'bg-slate-50 text-slate-600 border-slate-200'
-  };
-
-  const panelContent = (
-    <div className={panelClasses}>
-      <div className="p-4 overflow-y-auto space-y-3">
-        {sorted.map((change) => {
-          const decision = decisions[change.id] || 'pending';
-          const style = decisionStyles[decision];
-          const badgeStyle = categoryStyles[change.type] || categoryStyles.clarity;
-
-          return (
-            <div
-              key={change.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => onSelectChange?.(change)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  onSelectChange?.(change);
-                }
-              }}
-              className="border border-slate-200 rounded-2xl p-4 shadow-sm cursor-pointer transition hover:border-emerald-200 hover:shadow-md"
-            >
-
-              <div className="mt-3 flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDecisionChange(change.id, decision === 'accepted' ? 'pending' : 'accepted');
-                  }}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
-                    decision === 'accepted'
-                      ? 'bg-emerald-500 text-white shadow-sm'
-                      : 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-                  }`}
-                >
-                  {decision === 'accepted' ? 'Accepted' : 'Accept'}
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDecisionChange(change.id, 'skipped');
-                  }}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${
-                    decision === 'skipped'
-                      ? 'bg-amber-500 text-white border-amber-500'
-                      : 'bg-white border-amber-200 text-amber-700 hover:bg-amber-50'
-                  }`}
-                >
-                  Skip
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDecisionChange(change.id, 'rejected');
-                  }}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${
-                    decision === 'rejected'
-                      ? 'bg-rose-500 text-white border-rose-500'
-                      : 'bg-white border-rose-200 text-rose-700 hover:bg-rose-50'
-                  }`}
-                >
-                  Reject
-                </button>
-                {decision !== 'pending' && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDecisionChange(change.id, 'pending');
-                    }}
-                    className="px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-
-        {sorted.length === 0 && (
-          <div className="border border-slate-200 rounded-xl p-4 text-sm text-slate-600 bg-slate-50">
-            No suggestions available yet. Run an analysis to populate this list.
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  if (isInline) {
-    return (
-      <div className={`${panelHeight} sticky top-4`}>
-
-      </div>
-    );
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex">
-      <div
-        className="flex-1 bg-slate-900/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-    </div>
-  );
-};
 
 // ============================================
-// MAIN PRESENTATION COMPONENT
+// CORRECTION EDITOR COMPONENT
 // ============================================
 
 const CorrectionEditor = ({
@@ -2309,14 +2111,14 @@ const CorrectionEditor = ({
   const activeStyle = activeChange ? (categoryStyles[activeChange.type] || categoryStyles.clarity) : null;
 
   return (
-    <div className="space-y-3">
-      <div className="relative" ref={containerRef}>
+    <div className="h-full flex flex-col">
+      <div className="flex-1 relative" ref={containerRef}>
         <div
           ref={overlayRef}
-          className="absolute inset-0 overflow-auto rounded-2xl pointer-events-none"
+          className="absolute inset-0 overflow-auto pointer-events-none"
           aria-hidden="true"
         >
-          <pre className="min-h-[1024px] w-full p-4 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-transparent">
+          <pre className="h-full w-full p-4 font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-words text-transparent">
             {renderedSegments}
           </pre>
         </div>
@@ -2329,16 +2131,16 @@ const CorrectionEditor = ({
           onKeyUp={handleCursorSelection}
           onSelect={handleCursorSelection}
           spellCheck="false"
-          className="w-full bg-white/70 border border-slate-200 rounded-2xl p-4 max-h-350px min-h-[350px] overflow-auto text-sm text-slate-800 font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-200 resize-y cv-editor-highlight relative"
-          style={{ maxHeight: '512px' }}
+          className="w-full h-full bg-white border-0 p-4 overflow-auto text-[13px] text-gray-800 font-mono leading-relaxed focus:outline-none resize-none cv-editor-highlight relative"
           placeholder="Your improved CV will appear here after applying the changes."
         />
         {activeChange && popoverStyle && (
           <div
-            className="absolute z-20 rounded-2xl border border-slate-200 bg-white shadow-xl shadow-emerald-50"
+            className="absolute z-20 rounded-xl border border-gray-200 bg-white shadow-2xl"
             style={{
               top: popoverStyle.top,
-              left: popoverStyle.left
+              left: popoverStyle.left,
+              maxWidth: '420px'
             }}
           >
             <div className="p-4 space-y-3">
@@ -2354,22 +2156,22 @@ const CorrectionEditor = ({
                     <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${activeStyle?.gradient || 'from-emerald-400 to-green-500'}`} />
                     {activeStyle?.label || 'Correction'}
                   </span>
-                  <span className="text-[11px] px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 capitalize text-slate-700">
+                  <span className="text-[11px] px-2 py-1 rounded-lg bg-gray-50 border border-gray-200 capitalize text-gray-700">
                     {activeDecision}
                   </span>
                 </div>
-                <div className="text-sm font-semibold text-slate-900">{activeChange.title}</div>
-                <p className="text-sm text-slate-600">{activeChange.description}</p>
+                <div className="text-sm font-semibold text-gray-900">{activeChange.title}</div>
+                <p className="text-xs text-gray-600">{activeChange.description}</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-100 break-words">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-100 break-words">
                   <div className="text-[10px] uppercase font-semibold text-rose-700 mb-1">Original</div>
-                  <div className="text-rose-800">{activeChange.original}</div>
+                  <div className="text-rose-800 text-[11px]">{activeChange.original}</div>
                 </div>
-                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 break-words">
+                <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-100 break-words">
                   <div className="text-[10px] uppercase font-semibold text-emerald-700 mb-1">Replacement</div>
-                  <div className="text-emerald-900 font-medium">{activeChange.replacement}</div>
+                  <div className="text-emerald-900 font-medium text-[11px]">{activeChange.replacement}</div>
                 </div>
               </div>
 
@@ -2377,7 +2179,7 @@ const CorrectionEditor = ({
                 <button
                   type="button"
                   onClick={() => onDecisionChange?.(activeChange.id, 'accepted')}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
                     activeDecision === 'accepted'
                       ? 'bg-emerald-500 text-white shadow-sm'
                       : 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'
@@ -2388,7 +2190,7 @@ const CorrectionEditor = ({
                 <button
                   type="button"
                   onClick={() => onDecisionChange?.(activeChange.id, 'rejected')}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
                     activeDecision === 'rejected'
                       ? 'bg-rose-500 text-white border-rose-500'
                       : 'bg-white border border-rose-200 text-rose-700 hover:bg-rose-50'
@@ -2399,7 +2201,7 @@ const CorrectionEditor = ({
                 <button
                   type="button"
                   onClick={() => onDecisionChange?.(activeChange.id, 'pending')}
-                  className="px-3 py-2 rounded-lg text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition"
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition"
                 >
                   Reset
                 </button>
@@ -2408,12 +2210,10 @@ const CorrectionEditor = ({
           </div>
         )}
       </div>
-      <div className="text-xs text-slate-500">
-        Corrected areas are tinted in the editor. Click any highlight (or place the cursor inside it) to open its inline popover with explanation and actions.
-      </div>
     </div>
   );
 };
+
 
 // ============================================
 // MAIN PRESENTATION COMPONENT
@@ -2740,32 +2540,28 @@ const Presentation = ({
   if (isOutro) {
     return (
       <div className="fixed inset-0 bg-slate-50 text-slate-900">
-        <div className="flex h-full gap-4 px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex-1 min-w-0 overflow-y-auto pl-1">
-            <div className="max-w-5xl w-full mx-auto space-y-6 pb-10">
-              <OutroSlide
-                isActive
-                score={score}
-                newScore={newScore}
-                totalChanges={changes.length}
-                onRestart={handleRestart}
-                onBack={onBack}
-                improvedCV={improvedCV || cvText}
-                keywordSnapshot={keywordSnapshot}
-                onApplyAll={onApplyAll}
-                editorRef={editorRef}
-                editorValue={editorValue}
-                onEditorChange={setEditorValue}
-                changes={changes}
-                decisions={decisions}
-                onDecisionChange={onDecisionChange}
-                onSendUserRequest={onUserRequest}
-                isRequestingUserChange={isUserRequesting}
-                userRequestError={userRequestError}
-                onClearUserRequestError={onClearUserRequestError}
-              />
-            </div>
-          </div>
+        <div className="h-full flex flex-col">
+          <OutroSlide
+            isActive
+            score={score}
+            newScore={newScore}
+            totalChanges={changes.length}
+            onRestart={handleRestart}
+            onBack={onBack}
+            improvedCV={improvedCV || cvText}
+            keywordSnapshot={keywordSnapshot}
+            onApplyAll={onApplyAll}
+            editorRef={editorRef}
+            editorValue={editorValue}
+            onEditorChange={setEditorValue}
+            changes={changes}
+            decisions={decisions}
+            onDecisionChange={onDecisionChange}
+            onSendUserRequest={onUserRequest}
+            isRequestingUserChange={isUserRequesting}
+            userRequestError={userRequestError}
+            onClearUserRequestError={onClearUserRequestError}
+          />
         </div>
       </div>
     );
