@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useFloating, offset, flip, shift, autoUpdate } from '@floating-ui/react';
 
 // ============================================
 // CONFIGURATION
@@ -1907,22 +1908,15 @@ const CorrectionEditor = ({
   const resolvedEditorRef = editorRef || internalEditorRef;
   const [activeChangeId, setActiveChangeId] = useState(null);
   const [hasUserSelected, setHasUserSelected] = useState(false);
-  const [popoverStyle, setPopoverStyle] = useState(null);
-
-  const highlightByType = useMemo(() => ({
-    correctness: 'bg-emerald-200/60 border-emerald-300/70',
-    clarity: 'bg-sky-200/60 border-sky-300/70',
-    engagement: 'bg-indigo-200/60 border-indigo-300/70',
-    delivery: 'bg-amber-200/60 border-amber-300/70',
-    keyword: 'bg-teal-200/60 border-teal-300/70'
-  }), []);
-
-  const decisionHalo = useMemo(() => ({
-    accepted: 'ring-2 ring-emerald-300/70 shadow-[0_0_0_1px_rgba(16,185,129,0.35)]',
-    pending: 'ring-2 ring-amber-200/70 shadow-[0_0_0_1px_rgba(251,191,36,0.35)]',
-    rejected: 'ring-2 ring-rose-200/70 shadow-[0_0_0_1px_rgba(244,63,94,0.35)]',
-    skipped: 'ring-1 ring-slate-200/80 shadow-[0_0_0_1px_rgba(148,163,184,0.25)]'
-  }), []);
+  const { refs, floatingStyles, update } = useFloating({
+    placement: 'bottom-start',
+    middleware: [
+      offset(8),
+      flip({ padding: 12 }),
+      shift({ padding: 12 })
+    ],
+    whileElementsMounted: autoUpdate
+  });
 
   const safeValue = typeof value === 'string' ? value : '';
 
@@ -1998,56 +1992,41 @@ const CorrectionEditor = ({
 
   const registerSpan = useCallback((id, node) => {
     if (!spanRefs.current) return;
-    if (node) spanRefs.current.set(id, node);
-    else spanRefs.current.delete(id);
-  }, []);
+    if (node) {
+      spanRefs.current.set(id, node);
+      if (id === activeChangeId) {
+        refs.setReference(node);
+        requestAnimationFrame(() => update?.());
+      }
+    } else {
+      spanRefs.current.delete(id);
+    }
+  }, [activeChangeId, refs, update]);
 
-  const updatePopoverPosition = useCallback((changeId) => {
-    const container = containerRef.current;
-    const highlightEl = spanRefs.current.get(changeId);
-    if (!container || !highlightEl) {
-      setPopoverStyle(null);
+  useEffect(() => {
+    if (!activeChangeId) {
+      refs.setReference(null);
       return;
     }
-
-    const containerRect = container.getBoundingClientRect();
-    const highlightRect = highlightEl.getBoundingClientRect();
-
-    const maxWidth = container.clientWidth;
-    const offsetTop = highlightRect.bottom - containerRect.top + 8;
-    const offsetLeft = highlightRect.left - containerRect.left;
-    const clampedLeft = Math.max(0, Math.min(offsetLeft, Math.max(maxWidth - 320, 0)));
-
-    setPopoverStyle({
-      top: offsetTop,
-      left: clampedLeft
-    });
-  }, []);
-
-  useEffect(() => {
-    if (activeChangeId) {
-      updatePopoverPosition(activeChangeId);
-    } else {
-      setPopoverStyle(null);
+    const node = spanRefs.current.get(activeChangeId);
+    refs.setReference(node || null);
+    if (node) {
+      requestAnimationFrame(() => update?.());
     }
-  }, [activeChangeId, safeValue, segments, updatePopoverPosition]);
+  }, [activeChangeId, refs, segments, update]);
 
   useEffect(() => {
-    const handleResize = () => {
-      if (activeChangeId) {
-        updatePopoverPosition(activeChangeId);
-      }
-    };
+    const handleResize = () => update?.();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [activeChangeId, updatePopoverPosition]);
+  }, [update]);
 
   const syncScroll = useCallback(() => {
     if (!overlayRef.current || !resolvedEditorRef?.current) return;
     overlayRef.current.scrollTop = resolvedEditorRef.current.scrollTop;
     overlayRef.current.scrollLeft = resolvedEditorRef.current.scrollLeft;
-    if (activeChangeId) updatePopoverPosition(activeChangeId);
-  }, [activeChangeId, resolvedEditorRef, updatePopoverPosition]);
+    if (activeChangeId) update?.();
+  }, [activeChangeId, resolvedEditorRef, update]);
 
   const handleCursorSelection = useCallback((event) => {
     const pos = typeof event?.target?.selectionStart === 'number' ? event.target.selectionStart : 0;
@@ -2064,33 +2043,61 @@ const CorrectionEditor = ({
     const output = [];
     let cursor = 0;
 
+    const markerColorByType = {
+      correctness: '#17B26A',
+      clarity: '#2DB2D3',
+      engagement: '#7C7CF2',
+      delivery: '#F6A83F',
+      keyword: '#18B981'
+    };
+
+    const decisionClass = {
+      accepted: 'bg-emerald-600 text-white ring-emerald-200',
+      rejected: 'bg-rose-500 text-white ring-rose-200',
+      pending: 'bg-white text-slate-700 ring-slate-200',
+      skipped: 'bg-white text-slate-500 ring-slate-200'
+    };
+
     segments.forEach((seg, idx) => {
       if (seg.start > cursor) {
         output.push(safeValue.slice(cursor, seg.start));
       }
 
       const decision = decisions[seg.change.id] || 'pending';
-      const baseClass = highlightByType[seg.change.type] || highlightByType.clarity;
-      const halo = decisionHalo[decision] || decisionHalo.pending;
+      const accentColor = markerColorByType[seg.change.type] || markerColorByType.clarity;
+      const decisionStyles = decisionClass[decision] || decisionClass.pending;
 
       output.push(
         <span
           key={`${seg.change.id}-${idx}`}
-          ref={(node) => registerSpan(seg.change.id, node)}
-          className={`relative inline-block rounded-md px-0.5 py-0.5 text-transparent ${baseClass} ${halo} pointer-events-auto`}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          onClick={(e) => {
-            e.preventDefault();
-            setActiveChangeId(seg.change.id);
-            setHasUserSelected(true);
-            updatePopoverPosition(seg.change.id);
-          }}
-          title={seg.change.title || 'Correction'}
+          className="relative inline-block align-baseline pointer-events-auto"
         >
-          {safeValue.slice(seg.start, seg.end)}
+          <span className="invisible select-none">{safeValue.slice(seg.start, seg.end)}</span>
+          <button
+            type="button"
+            ref={(node) => registerSpan(seg.change.id, node)}
+            className={`absolute right-0 translate-x-[8px] -top-2 inline-flex items-center justify-center w-5 h-5 rounded-full border border-white/60 shadow-sm text-[10px] font-bold transition hover:scale-110 focus:outline-none focus:ring-2 focus:ring-emerald-300 ${decisionStyles}`}
+            style={{ backgroundColor: decision === 'pending' ? accentColor : undefined, color: decision === 'pending' ? '#fff' : undefined }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              setActiveChangeId(seg.change.id);
+              setHasUserSelected(true);
+              refs.setReference(e.currentTarget);
+              if (resolvedEditorRef?.current) {
+                resolvedEditorRef.current.focus();
+                resolvedEditorRef.current.setSelectionRange(seg.start, seg.end);
+              }
+              requestAnimationFrame(() => update?.());
+            }}
+            title={seg.change.title || 'Correction'}
+            aria-label={`View recommendation: ${seg.change.title || 'Correction'}`}
+          >
+            +
+          </button>
         </span>
       );
 
@@ -2102,20 +2109,42 @@ const CorrectionEditor = ({
     }
 
     return output;
-  }, [decisions, highlightByType, decisionHalo, registerSpan, safeValue, segments, updatePopoverPosition]);
+  }, [decisions, registerSpan, refs, resolvedEditorRef, safeValue, segments, update]);
 
   const activeChange = activeChangeId
     ? changes.find((c) => c.id === activeChangeId)
     : null;
   const activeDecision = activeChange ? (decisions[activeChange.id] || 'pending') : 'pending';
   const activeStyle = activeChange ? (categoryStyles[activeChange.type] || categoryStyles.clarity) : null;
+  const showPopover = !!(activeChange && refs.reference?.current);
+
+  const handleDecisionClick = useCallback((decision) => {
+    if (!activeChange) return;
+    const changeId = activeChange.id;
+    const nextDecisions = { ...decisions, [changeId]: decision };
+    onDecisionChange?.(changeId, decision);
+
+    const nextPending = segments.find(
+      (seg) =>
+        seg.change.id !== changeId &&
+        (nextDecisions[seg.change.id] || 'pending') === 'pending'
+    );
+
+    if (nextPending) {
+      setActiveChangeId(nextPending.change.id);
+      requestAnimationFrame(() => update?.());
+    } else {
+      setActiveChangeId(null);
+      refs.setReference(null);
+    }
+  }, [activeChange, decisions, onDecisionChange, refs, segments, update]);
 
   return (
     <div className="h-full flex flex-col">
       <div className="flex-1 relative" ref={containerRef}>
         <div
           ref={overlayRef}
-          className="absolute inset-0 overflow-auto pointer-events-none"
+          className="absolute inset-0 overflow-auto pointer-events-none z-10"
           aria-hidden="true"
         >
           <pre className="h-full w-full p-4 font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-words text-transparent">
@@ -2134,12 +2163,13 @@ const CorrectionEditor = ({
           className="w-full h-full bg-white border-0 p-4 overflow-auto text-[13px] text-gray-800 font-mono leading-relaxed focus:outline-none resize-none cv-editor-highlight relative"
           placeholder="Your improved CV will appear here after applying the changes."
         />
-        {activeChange && popoverStyle && (
+        {showPopover && (
           <div
+            ref={refs.setFloating}
             className="absolute z-20 rounded-xl border border-gray-200 bg-white shadow-2xl"
             style={{
-              top: popoverStyle.top,
-              left: popoverStyle.left,
+              ...floatingStyles,
+              minWidth: '320px',
               maxWidth: '420px'
             }}
           >
@@ -2178,7 +2208,7 @@ const CorrectionEditor = ({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => onDecisionChange?.(activeChange.id, 'accepted')}
+                  onClick={() => handleDecisionClick('accepted')}
                   className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
                     activeDecision === 'accepted'
                       ? 'bg-emerald-500 text-white shadow-sm'
@@ -2189,7 +2219,7 @@ const CorrectionEditor = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => onDecisionChange?.(activeChange.id, 'rejected')}
+                  onClick={() => handleDecisionClick('rejected')}
                   className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
                     activeDecision === 'rejected'
                       ? 'bg-rose-500 text-white border-rose-500'
@@ -2200,7 +2230,7 @@ const CorrectionEditor = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => onDecisionChange?.(activeChange.id, 'pending')}
+                  onClick={() => handleDecisionClick('pending')}
                   className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition"
                 >
                   Reset
