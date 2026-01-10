@@ -2898,7 +2898,7 @@ const InputView = ({ onAnalyze, isLoading, progress }) => {
   const [apiKey, setApiKey] = useState('');
   const [apiProvider, setApiProvider] = useState('openai');
   const [showApiKey, setShowApiKey] = useState(false);
-  const [selectedVoice, setSelectedVoice] = useState('onyx');
+  const [selectedVoice, setSelectedVoice] = useState('nova');
   const progressStage = progress?.stage || (isLoading ? 'keywords' : 'idle');
   const totalKeywords = typeof progress?.totalKeywords === 'number' ? progress.totalKeywords : null;
   const matchedKeywords = typeof progress?.matchedKeywords === 'number' ? progress.matchedKeywords : null;
@@ -2919,6 +2919,7 @@ const InputView = ({ onAnalyze, isLoading, progress }) => {
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [isReadingFile, setIsReadingFile] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   // Load saved settings
   useEffect(() => {
@@ -3170,152 +3171,185 @@ Responsibilities:
   };
 
   return (
-    <div className="min-h-screen bg-white px-6 py-10 flex items-center justify-center text-slate-900">
-      <div className="max-w-4xl w-full">
-        
-        {/* Header */}
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-3 px-5 py-2.5">
-            <span className="font-bold text-lg">Get a Personalized CV Walkthrough</span>
+    <div className="min-h-screen bg-white px-6 py-10 text-slate-900">
+      <div className="max-w-4xl mx-auto space-y-8 relative">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1">
+
           </div>
-          <div className="inline-flex items-center gap-3 px-5 py-2.5">
-            <p className="text-center text-slate-500 text-xs mt-6">
-          Note: OpenAI API key is used for both CV analysis (GPT-5.2) and voice narration (TTS). 
-          For Anthropic analysis, you'll still need an OpenAI key for TTS.
-        </p>
+          <button
+            type="button"
+            onClick={() => setShowSettings(true)}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white shadow-sm hover:border-emerald-300 hover:text-emerald-700 transition"
+            aria-label="Open settings"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a5.25 5.25 0 100 10.5 5.25 5.25 0 000-10.5z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h1.25M3.25 12H4.5m7.5 7.5v1.25m0-18.5V4.5m4.95 13.05l.9.9m-11.8-11.8l.9.9m0 10l-.9.9m11.8-11.8l-.9.9" />
+            </svg>
+            <span className="text-sm font-semibold">Settings</span>
+          </button>
         </div>
-        </div>
 
-        {/* Input Card */}
-        <div className="bg-white rounded-3xl border border-emerald-100 shadow-xl shadow-emerald-50 p-8 space-y-6">
-          
-          {/* API Settings */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-slate-700 text-sm font-semibold mb-2">API Provider</label>
-              <select
-                value={apiProvider}
-                onChange={(e) => setApiProvider(e.target.value)}
-                className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-900 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition"
-              >
-                <option value="openai">OpenAI (GPT-5.2)</option>
-                <option value="anthropic">Anthropic (Claude)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-slate-700 text-sm font-semibold mb-2">
-                API Key <span className="text-slate-500 font-normal">(used for analysis & TTS)</span>
-              </label>
-              <div className="relative">
-                <input
-                  type={showApiKey ? 'text' : 'password'}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={apiProvider === 'openai' ? 'sk-...' : 'sk-ant-...'}
-                  className="w-full p-3 pr-12 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
-                  aria-label="Toggle API key visibility"
-                >
-                  {showApiKey ? '🙈' : '👁️'}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Voice Selection */}
+        <div className="space-y-5">
           <div>
-            <label className="block text-slate-700 text-sm font-semibold mb-2">
-              Narrator Voice <span className="text-slate-500 font-normal">(OpenAI TTS)</span>
-            </label>
-            <VoiceSelector selectedVoice={selectedVoice} onVoiceChange={setSelectedVoice} />
-          </div>
-
-          <div>
-            <label className="block text-slate-700 text-sm font-semibold mb-2">Job Description</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Job description</label>
             <textarea
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
               placeholder="Paste the job posting you're applying to..."
-              className="w-full h-36 p-4 bg-white border border-slate-200 rounded-2xl text-slate-900 placeholder-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none resize-none transition"
+              className="w-full h-40 p-4 bg-white border border-slate-200 rounded-2xl text-slate-900 placeholder-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none resize-none transition"
             />
           </div>
 
           <div>
-            <div className="flex items-center justify-between gap-3 mb-2">
-              <label className="block text-slate-700 text-sm font-semibold">Your CV / Resume</label>
-              <label className="relative inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 text-slate-700 border border-slate-200 hover:border-emerald-300 hover:text-emerald-800 transition cursor-pointer">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
-                </svg>
-                <span className="text-xs font-semibold">Upload PDF or TXT</span>
-                <input
-                  type="file"
-                  accept=".pdf,.txt,application/pdf,text/plain"
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                  onChange={handleFileUpload}
-                  disabled={isLoading || isReadingFile}
-                />
-              </label>
-            </div>
-            <p className="text-xs text-slate-500 mb-2">
-              We pull text locally from your file; nothing is sent until you start the walkthrough.
-            </p>
-            {uploadStatus && (
-              <div className="mb-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-2 rounded-xl">
-                {uploadStatus}
-              </div>
-            )}
-            {uploadError && (
-              <div className="mb-2 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 px-3 py-2 rounded-xl">
-                {uploadError}
-              </div>
-            )}
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Your CV / resume</label>
             <textarea
               value={cvText}
               onChange={(e) => setCvText(e.target.value)}
               placeholder="Paste your CV content here..."
-              className="w-full h-48 p-4 bg-white border border-slate-200 rounded-2xl text-slate-900 placeholder-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none resize-none transition font-mono text-sm"
+              className="w-full h-56 p-4 bg-white border border-slate-200 rounded-2xl text-slate-900 placeholder-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none resize-none transition font-mono text-sm"
             />
-          </div>
-
-          <div className="flex items-center justify-between pt-2">
-            <button
-              onClick={() => { setCvText(sampleCV); setJobDescription(sampleJob); }}
-              className="text-emerald-600 hover:text-emerald-500 text-sm font-medium transition-colors"
-            >
-              Load sample data →
-            </button>
-
-            <button
-              onClick={handleSubmit}
-              disabled={!cvText.trim() || !jobDescription.trim() || !apiKey.trim() || isLoading || isReadingFile}
-              className="px-8 py-4 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 disabled:from-slate-300 disabled:to-slate-400 text-white font-bold rounded-2xl shadow-lg shadow-emerald-100 disabled:shadow-none transition-all flex items-center gap-3"
-            >
-              {isLoading ? (
-                <>
-                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Analyzing...
-                </>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <polygon points="5,3 19,12 5,21" />
-                  </svg>
-                  Start Walkthrough
-                </>
-              )}
-            </button>
           </div>
         </div>
 
+        <div className="flex flex-col gap-3 pt-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="text-xs text-slate-500">
+                API, voice, and sample data live in Settings.
+              </div>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <label className="relative inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-emerald-200 bg-white text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50 transition cursor-pointer shadow-sm">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
+                  </svg>
+                  <span className="text-sm font-semibold">Upload PDF or TXT</span>
+                  <input
+                    type="file"
+                    accept=".pdf,.txt,application/pdf,text/plain"
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    onChange={handleFileUpload}
+                    disabled={isLoading || isReadingFile}
+                  />
+                </label>
+                <button
+                  onClick={handleSubmit}
+                  disabled={!cvText.trim() || !jobDescription.trim() || !apiKey.trim() || isLoading || isReadingFile}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-semibold shadow-lg shadow-emerald-100 disabled:shadow-none transition"
+                >
+                  {isLoading ? (
+                    <>
+                      <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <polygon points="5,3 19,12 5,21" />
+                      </svg>
+                      Start Walkthrough
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          {uploadStatus && (
+            <div className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-2 rounded-xl">
+              {uploadStatus}
+            </div>
+          )}
+          {uploadError && (
+            <div className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 px-3 py-2 rounded-xl">
+              {uploadError}
+            </div>
+          )}
+        </div>
       </div>
+
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
+              <div>
+                <div className="text-xs uppercase font-semibold text-slate-500">Settings</div>
+                <div className="text-lg font-bold text-slate-900">API, voice, and samples</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSettings(false)}
+                className="w-9 h-9 rounded-xl border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 transition"
+                aria-label="Close settings"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-700 text-sm font-semibold mb-2">API Provider</label>
+                  <select
+                    value={apiProvider}
+                    onChange={(e) => setApiProvider(e.target.value)}
+                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-900 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition"
+                  >
+                    <option value="openai">OpenAI (GPT-5.2)</option>
+                    <option value="anthropic">Anthropic (Claude)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-700 text-sm font-semibold mb-2">
+                    API Key <span className="text-slate-500 font-normal">(analysis & TTS)</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showApiKey ? 'text' : 'password'}
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder={apiProvider === 'openai' ? 'sk-...' : 'sk-ant-...'}
+                      className="w-full p-3 pr-12 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                      aria-label="Toggle API key visibility"
+                    >
+                      {showApiKey ? '🙈' : '👁️'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 text-sm font-semibold mb-2">
+                  Narrator Voice <span className="text-slate-500 font-normal">(OpenAI TTS)</span>
+                </label>
+                <VoiceSelector selectedVoice={selectedVoice} onVoiceChange={setSelectedVoice} />
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-slate-700 text-sm font-semibold mb-2">Sample data</label>
+                  <button
+                    type="button"
+                    onClick={() => { setCvText(sampleCV); setJobDescription(sampleJob); }}
+                    className="px-4 py-2 rounded-xl bg-slate-50 text-slate-700 border border-slate-200 hover:border-emerald-300 hover:text-emerald-800 transition"
+                  >
+                    Load sample CV & job
+                  </button>
+                  <p className="text-xs text-slate-500 mt-2">
+                    Upload your file from the main screen.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
