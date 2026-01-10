@@ -2244,7 +2244,7 @@ const Presentation = ({
   userRequestError,
   onClearUserRequestError
 }) => {
-  const [currentSlide, setCurrentSlide] = useState(-1);
+  const [currentSlide, setCurrentSlide] = useState(() => changes.length);
   const [phase, setPhase] = useState('intro');
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
