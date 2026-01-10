@@ -1159,117 +1159,80 @@ const PresentationSlide = ({
   const script = useMemo(() => generateScript(change, index, total, score), [change, index, total, score]);
 
   return (
-    <div className={`absolute inset-0 flex transition-all duration-700 ${isActive ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
-      
-      {/* Left Panel - Context */}
-      <div className="w-1/2 p-12 flex flex-col justify-center">
-        
+    <div className={`absolute inset-0 transition-all duration-700 ${isActive ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-950 to-black" />
+      <div className={`absolute -left-32 -top-24 w-72 h-72 rounded-full blur-3xl opacity-30 bg-gradient-to-br ${style.gradient}`} />
+      <div className={`absolute -right-24 bottom-0 w-80 h-80 rounded-full blur-3xl opacity-20 bg-gradient-to-br ${style.gradient}`} />
 
-        {/* Category Badge */}
-        <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 border w-fit mb-6 transition-all duration-500 delay-100 ${phase !== 'intro' ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'}`}>
-          <span className={`w-3 h-3 rounded-full bg-gradient-to-r ${style.gradient}`} />
-          <span className="text-emerald-700 text-sm font-medium">{style.label}</span>
+      <div className="relative z-10 h-full w-full flex flex-col justify-between px-8 md:px-12 py-10">
+        <div className="flex items-center gap-3 text-white/70">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 backdrop-blur">
+            <span className={`w-2.5 h-2.5 rounded-full bg-gradient-to-r ${style.gradient} animate-pulse`} />
+            <span className="text-xs font-semibold tracking-wide">{style.label}</span>
+          </div>
+          <span className="text-[11px] uppercase tracking-[0.18em] text-white/40">
+            Scene {index + 1} • CV Upgrade
+          </span>
         </div>
 
-        {script.narrativeIntro && (
-          <p className={`text-sm text-slate-500 italic mb-3 transition-all duration-500 delay-150 ${phase !== 'intro' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
-            {script.narrativeIntro}
-          </p>
-        )}
-
-        {/* Main Title */}
-        <h2 className={`text-4xl font-bold text-slate-900 mb-4 transition-all duration-500 delay-200 ${phase !== 'intro' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-          {change.title}
-        </h2>
-
-        {/* Explanation */}
-        <p className={`text-xl text-slate-600 leading-relaxed mb-8 transition-all duration-500 delay-300 ${['explanation', 'before-after', 'impact'].includes(phase) ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-          {change.description}
-        </p>
-
-        {/* Impact Meter */}
-        <div className={`transition-all duration-500 delay-400 ${phase === 'impact' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-slate-500 text-sm">Impact on Match Score</span>
-            <span className="text-slate-900 font-bold">+{Math.round(100/total)}%</span>
-          </div>
-          <div className="h-3 bg-emerald-50 rounded-full overflow-hidden border">
-            <div 
-              className={`h-full rounded-full bg-gradient-to-r ${style.gradient} transition-all duration-1000`}
-              style={{ width: phase === 'impact' ? `${Math.min((100/total) * 5, 100)}%` : '0%' }}
-            />
-          </div>
-        </div>
-
-        {/* Progress */}
-        <div className="mt-auto pt-8">
-          <div className="flex items-center justify-between">
-            {/* <span>Progress</span> */}
-            {/* <span>{index + 1} of {total}</span> */}
-          </div>
-          <div>
-            {/* <div 
-              className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-500"
-              style={{ width: `${((index + 1) / total) * 100}%` }}
-            /> */}
-          </div>
-        </div>
-      </div>
-
-      {/* Right Panel - Visual */}
-      <div className="w-1/2 p-12 flex flex-col justify-center bg-white">
-        
-        {/* Before/After Card */}
-        <div className={`transition-all duration-700 delay-200 ${['before-after', 'impact'].includes(phase) ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}`}>
-          
-          {/* Before */}
-          <div className="mb-8">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 rounded-lg bg-rose-100 flex items-center justify-center">
-                <svg className="w-4 h-4 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </div>
-              <span className="text-rose-600 font-semibold text-sm uppercase tracking-wide">Before</span>
+        <div className="flex-1 grid md:grid-cols-5 gap-8 items-center">
+          <div className="md:col-span-3 space-y-4 text-white">
+            {script.narrativeIntro && (
+              <p className={`text-sm text-white/60 italic transition-all duration-500 ${phase !== 'intro' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+                {script.narrativeIntro}
+              </p>
+            )}
+            <h2 className={`text-3xl sm:text-4xl font-bold leading-tight drop-shadow-xl transition-all duration-500 ${phase !== 'intro' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+              {change.title}
+            </h2>
+            <p className={`text-lg sm:text-xl text-white/80 leading-relaxed transition-all duration-500 ${['explanation', 'before-after', 'impact'].includes(phase) ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+              {change.description}
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-white/70 backdrop-blur">
+                {Math.round(100 / total)}% lift potential
+              </span>
+              {script.impact && (
+                <span className={`px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-white/70 backdrop-blur transition ${phase === 'impact' ? 'opacity-100' : 'opacity-0'}`}>
+                  {script.impact}
+                </span>
+              )}
             </div>
-            <div className="p-6 rounded-2xl bg-rose-50 border border-rose-100">
-              <p className="text-lg text-rose-700 line-through decoration-rose-300 decoration-2">
+          </div>
+
+          <div className="md:col-span-2 space-y-4">
+            <div className={`rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4 transition-all duration-500 ${['before-after', 'impact'].includes(phase) ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+              <div className="flex items-center justify-between text-xs text-white/70 mb-2">
+                <span className="uppercase tracking-[0.2em]">Before</span>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${style.gradient}`} />
+                  <span className="text-white/50">needs polish</span>
+                </div>
+              </div>
+              <div className="text-base text-white/80 line-through decoration-white/40">
                 {change.original}
-              </p>
-            </div>
-          </div>
-
-          {/* Arrow */}
-          <div className="flex justify-center mb-8">
-            <div className={`w-12 h-12 rounded-full bg-gradient-to-r ${style.gradient} flex items-center justify-center shadow-lg transition-all duration-500 ${phase === 'impact' ? 'scale-110' : 'scale-100'}`}>
-              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-              </svg>
-            </div>
-          </div>
-
-          {/* After */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
               </div>
-              <span className="text-emerald-600 font-semibold text-sm uppercase tracking-wide">After</span>
             </div>
-            <div className={`p-6 rounded-2xl bg-emerald-50 border transition-all duration-500 ${phase === 'impact' ? 'shadow-lg shadow-emerald-100' : ''}`}>
-              <p className="text-lg text-emerald-800 font-medium">
+
+            <div className={`rounded-2xl border border-emerald-200/30 bg-emerald-500/10 backdrop-blur p-4 shadow-[0_10px_40px_rgba(16,185,129,0.18)] transition-all duration-500 ${phase === 'impact' ? 'opacity-100 translate-y-0 scale-[1.01]' : 'opacity-0 translate-y-4 scale-95'}`}>
+              <div className="flex items-center justify-between text-xs text-white mb-2">
+                <span className="uppercase tracking-[0.2em] text-emerald-100">After</span>
+                <span className="text-emerald-100 font-semibold">Sharper delivery</span>
+              </div>
+              <div className="text-base sm:text-lg text-white font-semibold">
                 {change.replacement}
-              </p>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Highlight indicator */}
-        <div className={`mt-8 flex items-center justify-center gap-2 transition-all duration-500 ${phase === 'impact' ? 'opacity-100' : 'opacity-0'}`}>
-          <span className="text-2xl">✨</span>
-          <span className="text-slate-600 font-medium">Much better!</span>
+        <div className={`flex items-center gap-3 text-white/70 transition-all duration-500 ${phase === 'impact' ? 'opacity-100' : 'opacity-0 translate-y-2'}`}>
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 backdrop-blur">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-xs font-semibold">Feels better already</span>
+          </div>
+          <div className="h-px w-16 bg-white/10" />
+          <span className="text-xs uppercase tracking-[0.28em] text-white/40">Rolling</span>
         </div>
       </div>
     </div>
@@ -1285,47 +1248,68 @@ const IntroSlide = ({
   score, 
   totalChanges, 
   onStart,
-  onViewRecommendations
+  onViewRecommendations,
+  isCinematic = true
 }) => {
-  return (
-    <div className={`absolute inset-0 flex items-center justify-center transition-all duration-700 ${isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-      <div className="text-center max-w-2xl px-8">
-        
-        {/* Animated Logo */}
-        <div className="mb-8 relative">
-          <div className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-white border flex items-center justify-center animate-bounce shadow-sm">
-            <span className="text-emerald-700 text-sm font-bold">{totalChanges}</span>
-          </div>
-        </div>
-        
-        <p className="text-xl text-slate-600 mb-8">
-          I found <span className="text-emerald-600 font-bold">{totalChanges} improvements</span> that could boost your match score from <span className="text-amber-500 font-bold">{score}%</span> to over <span className="text-emerald-600 font-bold">{Math.min(95, score + 40)}%</span>
-        </p>
+  const baseWrapper = `absolute inset-0 flex items-center justify-center transition-all duration-700 ${isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'}`;
+  const playButtonClass = isCinematic
+    ? 'px-7 py-4 bg-white text-slate-900 font-bold text-lg rounded-full shadow-xl shadow-emerald-500/30 transition-all hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-200 flex items-center gap-3'
+    : 'px-8 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-lg rounded-2xl shadow-xl shadow-emerald-500/30 transition-all hover:scale-105 flex items-center gap-3 mx-auto';
+  const skipButtonClass = isCinematic
+    ? 'px-7 py-4 bg-white/5 text-white font-semibold text-lg rounded-full border border-white/10 hover:border-white/30 transition-all hover:-translate-y-0.5'
+    : 'px-8 py-4 bg-white border border-emerald-200 hover:border-emerald-300 text-emerald-800 font-semibold text-lg rounded-2xl shadow-lg shadow-emerald-50 transition-all hover:-translate-y-0.5';
 
-        {/* Host intro */}
-        <div className="flex items-center justify-center gap-6 mb-10">
+  return (
+    <div className={`${baseWrapper} ${isCinematic ? 'bg-gradient-to-br from-black/70 via-slate-950 to-black' : 'bg-white'}`}>
+      {isCinematic && (
+        <>
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(16,185,129,0.2),transparent_35%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_10%,rgba(59,130,246,0.2),transparent_32%)] opacity-70" />
+        </>
+      )}
+      <div className={`relative text-center max-w-2xl px-8 ${isCinematic ? 'text-white' : 'text-slate-900'}`}>
+        <div className={`mb-8 inline-flex items-center gap-3 px-4 py-2 rounded-full ${isCinematic ? 'bg-white/5 border border-white/10 backdrop-blur' : 'bg-emerald-50 border border-emerald-100'}`}>
+          <div className={`h-9 w-9 rounded-full ${isCinematic ? 'bg-red-600 shadow-lg shadow-red-500/30 text-white' : 'bg-emerald-600 text-white shadow-lg shadow-emerald-200'} flex items-center justify-center`}>
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <polygon points="5,3 19,12 5,21" />
+            </svg>
+          </div>
+          <div className="text-left">
+            <div className={`text-xs uppercase tracking-[0.24em] ${isCinematic ? 'text-white/60' : 'text-emerald-700'}`}>Instant walkthrough</div>
+            <div className={`text-sm font-semibold ${isCinematic ? 'text-white' : 'text-slate-900'}`}>Press play to watch like a video</div>
+          </div>
+          <span className={`text-sm font-bold px-3 py-1 rounded-full ${isCinematic ? 'bg-white/10 border border-white/10' : 'bg-white border border-emerald-100 text-emerald-700'}`}>
+            {totalChanges} scenes
+          </span>
         </div>
+
+        <h1 className={`text-3xl sm:text-4xl font-bold mb-4 ${isCinematic ? 'drop-shadow' : ''}`}>
+          Your CV breakdown is ready to stream
+        </h1>
+        <p className={`text-lg ${isCinematic ? 'text-white/80' : 'text-slate-600'} mb-10`}>
+          I found <span className={`${isCinematic ? 'text-white' : 'text-emerald-700'} font-semibold`}>{totalChanges} key moments</span> that can lift your match score from <span className={`${isCinematic ? 'text-amber-300' : 'text-amber-600'} font-semibold`}>{score}%</span> to about <span className={`${isCinematic ? 'text-emerald-300' : 'text-emerald-700'} font-semibold`}>{Math.min(95, score + 40)}%</span>. Sit back—just hit play.
+        </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <button
             onClick={onStart}
-            className="px-8 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-lg rounded-2xl shadow-xl shadow-emerald-500/30 transition-all hover:scale-105 flex items-center gap-3 mx-auto"
+            className={playButtonClass}
           >
             <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
               <polygon points="5,3 19,12 5,21" />
             </svg>
-            Start Walkthrough
+            {isCinematic ? 'Play walkthrough' : 'Start walkthrough'}
           </button>
           <button
             onClick={onViewRecommendations}
-            className="px-8 py-4 bg-white border border-emerald-200 hover:border-emerald-300 text-emerald-800 font-semibold text-lg rounded-2xl shadow-lg shadow-emerald-50 transition-all hover:-translate-y-0.5"
+            className={skipButtonClass}
           >
-            Review recommendations
+            Skip to summary
           </button>
         </div>
 
-        <p className="text-slate-500 text-sm mt-4">
-          Takes about {Math.ceil(totalChanges * 0.5)} minutes — or jump straight to the recommendation panel.
+        <p className={`${isCinematic ? 'text-white/60' : 'text-slate-500'} text-sm mt-4`}>
+          Feels like a video—no steps to click through, just watch.
         </p>
       </div>
     </div>
@@ -1343,6 +1327,7 @@ const OutroSlide = ({
   totalChanges, 
   onRestart, 
   onBack,
+  onReplay,
   improvedCV,
   keywordSnapshot,
   onApplyAll,
@@ -1419,6 +1404,16 @@ const OutroSlide = ({
           </button>
           
           <div className="flex items-center gap-3">
+            <button
+              onClick={onReplay}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white border border-emerald-200 text-emerald-700 rounded-lg hover:bg-emerald-50 transition"
+              title="Rewatch the walkthrough"
+            >
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 5V2L7 7l5 5V9c2.757 0 5 2.243 5 5a5 5 0 11-8.66-3.11l-1.42-1.42A7 7 0 1012 5z" />
+              </svg>
+              Replay walkthrough
+            </button>
             {missingAfterList.length > 0 && (
               <button
                 onClick={() => setShowKeywords(!showKeywords)}
@@ -1907,7 +1902,6 @@ const CorrectionEditor = ({
   const internalEditorRef = useRef(null);
   const resolvedEditorRef = editorRef || internalEditorRef;
   const [activeChangeId, setActiveChangeId] = useState(null);
-  const [hasUserSelected, setHasUserSelected] = useState(false);
   const { refs, floatingStyles, update } = useFloating({
     placement: 'bottom-start',
     middleware: [
@@ -1978,18 +1972,6 @@ const CorrectionEditor = ({
       .sort((a, b) => a.start - b.start || b.end - a.end);
   }, [changes, decisions, safeValue]);
 
-  useEffect(() => {
-    if (!activeChangeId && segments.length > 0 && !hasUserSelected) {
-      setActiveChangeId(segments[0].change.id);
-    } else if (activeChangeId && !segments.some((seg) => seg.change.id === activeChangeId)) {
-      setActiveChangeId(null);
-    }
-  }, [activeChangeId, hasUserSelected, segments]);
-
-  useEffect(() => {
-    setHasUserSelected(false);
-  }, [segments.length, safeValue]);
-
   const registerSpan = useCallback((id, node) => {
     if (!spanRefs.current) return;
     if (node) {
@@ -2016,6 +1998,13 @@ const CorrectionEditor = ({
   }, [activeChangeId, refs, segments, update]);
 
   useEffect(() => {
+    // Close any open popover when a fresh set of recommendations is loaded
+    setActiveChangeId(null);
+    refs.setReference(null);
+    requestAnimationFrame(() => update?.());
+  }, [changes, refs, update]);
+
+  useEffect(() => {
     const handleResize = () => update?.();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -2031,13 +2020,12 @@ const CorrectionEditor = ({
   const handleCursorSelection = useCallback((event) => {
     const pos = typeof event?.target?.selectionStart === 'number' ? event.target.selectionStart : 0;
     const match = segments.find((seg) => pos >= seg.start && pos <= seg.end);
-    setHasUserSelected(true);
-    if (match) {
-      setActiveChangeId(match.change.id);
-    } else {
+    if (!match) {
       setActiveChangeId(null);
+      refs.setReference(null);
+      requestAnimationFrame(() => update?.());
     }
-  }, [segments]);
+  }, [refs, segments, update]);
 
   const renderedSegments = useMemo(() => {
     const output = [];
@@ -2085,7 +2073,6 @@ const CorrectionEditor = ({
             onClick={(e) => {
               e.preventDefault();
               setActiveChangeId(seg.change.id);
-              setHasUserSelected(true);
               refs.setReference(e.currentTarget);
               if (resolvedEditorRef?.current) {
                 resolvedEditorRef.current.focus();
@@ -2121,23 +2108,11 @@ const CorrectionEditor = ({
   const handleDecisionClick = useCallback((decision) => {
     if (!activeChange) return;
     const changeId = activeChange.id;
-    const nextDecisions = { ...decisions, [changeId]: decision };
     onDecisionChange?.(changeId, decision);
-
-    const nextPending = segments.find(
-      (seg) =>
-        seg.change.id !== changeId &&
-        (nextDecisions[seg.change.id] || 'pending') === 'pending'
-    );
-
-    if (nextPending) {
-      setActiveChangeId(nextPending.change.id);
-      requestAnimationFrame(() => update?.());
-    } else {
-      setActiveChangeId(null);
-      refs.setReference(null);
-    }
-  }, [activeChange, decisions, onDecisionChange, refs, segments, update]);
+    setActiveChangeId(null);
+    refs.setReference(null);
+    requestAnimationFrame(() => update?.());
+  }, [activeChange, onDecisionChange, refs, update]);
 
   return (
     <div className="h-full flex flex-col">
@@ -2274,14 +2249,46 @@ const Presentation = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [editorValue, setEditorValue] = useState(improvedCV || '');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isCinematic, setIsCinematic] = useState(false);
+  const handleCloseOverlay = () => {
+    clearTimeouts();
+    stop();
+    setIsPlaying(false);
+    setIsCinematic(false);
+    setPhase('intro');
+    setCurrentSlide(changes.length); // drop to summary instead of bouncing to first page
+  };
   
   const { playTransition, playHighlight, speak, prefetchSpeech, cancelPrefetches, pruneCache, getSpeechKey, stop, isSpeaking, isLoading } = useAudioSystem(apiKey);
   const timeoutRef = useRef(null);
   const editorRef = useRef(null);
+  const playerRef = useRef(null);
+  const timelineRef = useRef(null);
   const prevChangeCountRef = useRef(changes.length);
 
   const newScore = Math.min(95, score + Math.round(changes.length * 5));
   const isOutro = currentSlide === changes.length;
+
+  const activeTitle = currentSlide >= 0 && currentSlide < changes.length
+    ? changes[currentSlide]?.title
+    : 'Personalized walkthrough';
+
+  const phaseProgress = phase === 'highlight' ? 0.2 : phase === 'before-after' ? 0.55 : phase === 'impact' ? 0.9 : 0.05;
+  const timelineProgress = changes.length
+    ? Math.min(1, Math.max(0, (Math.max(currentSlide, 0) + phaseProgress) / changes.length))
+    : 0;
+
+  const ESTIMATED_SECONDS_PER_SCENE = 9;
+  const timelineDuration = Math.max(ESTIMATED_SECONDS_PER_SCENE * Math.max(changes.length, 1), ESTIMATED_SECONDS_PER_SCENE);
+  const elapsedSeconds = timelineDuration * timelineProgress;
+
+  const formatTime = useCallback((seconds) => {
+    const total = Math.max(0, Math.round(seconds));
+    const mins = Math.floor(total / 60);
+    const secs = total % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }, []);
 
   const clearTimeouts = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -2299,6 +2306,13 @@ const Presentation = ({
     }
     prevChangeCountRef.current = changes.length;
   }, [changes.length, currentSlide]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const handleFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
 
   const refreshPrefetchWindow = useCallback((anchorIndex) => {
     if (!changes.length) {
@@ -2523,9 +2537,36 @@ const Presentation = ({
     });
   }, [decisions]);
 
+  const handleTimelineScrub = (event) => {
+    if (!timelineRef.current || !changes.length) return;
+    const rect = timelineRef.current.getBoundingClientRect();
+    const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
+    const targetIndex = Math.min(changes.length - 1, Math.floor(ratio * changes.length));
+    clearTimeouts();
+    stop();
+    setIsPlaying(false);
+    setPhase('intro');
+    setCurrentSlide(targetIndex);
+  };
+
+  const handleToggleFullscreen = () => {
+    if (typeof document === 'undefined') return;
+    const el = playerRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      el.requestFullscreen?.();
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen?.();
+    }
+  };
+
   const handleStart = () => {
+    clearTimeouts();
+    stop();
     setIsPlaying(true);
-  
+    setIsCinematic(true);
+    setPhase('intro');
     setCurrentSlide(0);
   };
   
@@ -2535,6 +2576,7 @@ const Presentation = ({
     setIsPlaying(false);
     setPhase('intro');
     setCurrentSlide(changes.length);
+    setIsCinematic(false);
   };
 
   const handlePause = () => {
@@ -2565,6 +2607,21 @@ const Presentation = ({
     setCurrentSlide(-1);
     setPhase('intro');
     setIsPlaying(false);
+    setIsCinematic(false);
+  };
+  
+  const handleReplay = () => {
+    clearTimeouts();
+    stop();
+    setIsCinematic(true);
+    setPhase('intro');
+    setCurrentSlide(-1);
+    setIsPlaying(false);
+    // small delay to allow intro slide animation to reset before play
+    setTimeout(() => {
+      setIsPlaying(true);
+      setCurrentSlide(0);
+    }, 200);
   };
 
   if (isOutro) {
@@ -2578,6 +2635,7 @@ const Presentation = ({
             totalChanges={changes.length}
             onRestart={handleRestart}
             onBack={onBack}
+            onReplay={handleReplay}
             improvedCV={improvedCV || cvText}
             keywordSnapshot={keywordSnapshot}
             onApplyAll={onApplyAll}
@@ -2597,115 +2655,184 @@ const Presentation = ({
     );
   }
 
-  return (
-    <div className="fixed inset-0 bg-white text-slate-900 overflow-hidden">
-
-      <div className="relative w-full h-full">
-        <IntroSlide 
-          isActive={currentSlide === -1} 
-          score={score} 
-          totalChanges={changes.length}
-          onStart={handleStart}
-          onViewRecommendations={handleSkipToRecommendations}
-        />
-        
-        {changes.map((change, idx) => (
-          <PresentationSlide
-            key={change.id}
-            change={change}
-            index={idx}
-            total={changes.length}
-            score={score}
-            isActive={currentSlide === idx}
-            phase={currentSlide === idx ? phase : 'intro'}
-            cvText={cvText}
+  if (!isCinematic) {
+    return (
+      <div
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm text-slate-900 overflow-hidden z-50"
+        onClick={handleCloseOverlay}
+      >
+        <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+          <button
+            onClick={handleSkipToRecommendations}
+            className="px-3 py-2 rounded-lg bg-white text-emerald-700 border border-emerald-100 hover:border-emerald-300 transition"
+          >
+            Skip to summary
+          </button>
+          <button
+            onClick={handleCloseOverlay}
+            className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 hover:border-slate-300 transition"
+          >
+            Close
+          </button>
+        </div>
+        <div
+          className="relative w-full h-full"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <IntroSlide 
+            isActive={currentSlide === -1} 
+            score={score} 
+            totalChanges={changes.length}
+            onStart={handleStart}
+            onViewRecommendations={handleSkipToRecommendations}
+            isCinematic={false}
           />
-        ))}
+        </div>
       </div>
+    );
+  }
 
-      {/* Controls */}
-      {currentSlide >= 0 && currentSlide < changes.length && (
-        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 flex items-center gap-2 px-6 py-2 bg-white rounded-2xl border border-emerald-100 shadow-xl shadow-emerald-50">
-          <button 
-            onClick={onBack}
-            className="w-10 h-10 rounded-xl flex items-center justify-center border transition-all">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-          </button>
-          <div className="w-px h-8 bg-emerald-100 mx-2" />
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md"
+      onClick={handleCloseOverlay}
+    >
+      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_15%_20%,rgba(16,185,129,0.15),transparent_40%)] opacity-80" />
+      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_85%_15%,rgba(59,130,246,0.12),transparent_38%)] opacity-70" />
 
-          <button onClick={handlePrev} disabled={currentSlide <= -1} className="w-8 h-8 rounded-xl bg-white hover:bg-emerald-50 disabled:opacity-40 flex items-center justify-center text-slate-700 transition-all border border-slate-200">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          
-          <button 
-            onClick={isPlaying ? handlePause : handleResume}
-            className={`w-14 h-14 rounded-xl flex items-center justify-center transition-all shadow-lg ${isPlaying ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}
-          >
-            {isPlaying ? (
-              <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <rect x="6" y="4" width="4" height="16" rx="1" />
-                <rect x="14" y="4" width="4" height="16" rx="1" />
-              </svg>
-            ) : (
-              <svg className="w-6 h-6 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
-                <polygon points="5,3 19,12 5,21" />
-              </svg>
-            )}
-          </button>
-          
-          <button onClick={handleNext} disabled={currentSlide >= changes.length} className="w-10 h-10 rounded-xl bg-white hover:bg-emerald-50 disabled:opacity-40 flex items-center justify-center text-slate-700 transition-all border border-slate-200">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
+      <div
+        ref={playerRef}
+        className="relative w-[1200px] max-w-[96vw] aspect-video bg-[#0b0d13] rounded-[28px] overflow-hidden shadow-2xl ring-1 ring-white/10"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/5 pointer-events-none" />
 
-          <div className="w-px h-8 bg-emerald-100 mx-2" />
+        <div className="absolute inset-x-0 top-0 flex items-center justify-between px-6 py-4 text-white text-sm bg-gradient-to-b from-black/80 via-black/40 to-transparent z-20">
+          <div className="flex items-center gap-3">
 
-          <button 
-            onClick={() => setAudioEnabled(!audioEnabled)}
-            className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all ${audioEnabled ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-white text-slate-500 border-slate-200 hover:border-emerald-200'}`}
-          >
-            {audioEnabled ? '🔊' : '🔇'}
-          </button>
-
-          <div className="w-px h-8 bg-emerald-100 mx-2" />
-
-          <div className="text-slate-600 text-sm">
-            <span className="text-slate-900 font-bold">{currentSlide + 1}</span> / {changes.length}
           </div>
-
-          <div className="w-px h-8 bg-emerald-100 mx-2" />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSkipToRecommendations}
+              className="h-10 w-10 rounded-full bg-white/10 text-white border border-white/10 hover:border-white/40 flex items-center justify-center transition"
+              aria-label="Close walkthrough"
+            >
+              ✕
+            </button>
+          </div>
         </div>
-      )}
 
+        <div className="relative h-full w-full overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(255,255,255,0.05),transparent_45%)] pointer-events-none" />
+          <div className="relative h-full w-full">
+            <IntroSlide 
+              isActive={currentSlide === -1} 
+              score={score} 
+              totalChanges={changes.length}
+              onStart={handleStart}
+              onViewRecommendations={handleSkipToRecommendations}
+            />
+            
+            {changes.map((change, idx) => (
+              <PresentationSlide
+                key={change.id}
+                change={change}
+                index={idx}
+                total={changes.length}
+                score={score}
+                isActive={currentSlide === idx}
+                phase={currentSlide === idx ? phase : 'intro'}
+                cvText={cvText}
+              />
+            ))}
+          </div>
+        </div>
 
-      {/* Speaking/Loading indicator */}
-      {(isSpeaking || isLoading) && (
-        <div className={`absolute top-6 right-6 flex items-center gap-2 px-4 py-2 rounded-xl border shadow-sm ${isLoading ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
-          {isLoading ? (
-            <>
-              <svg className="w-4 h-4 text-amber-500 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              <span className="text-amber-800 text-sm font-medium">Generating audio...</span>
-            </>
-          ) : (
-            <>
-              <div className="flex gap-1">
-                <div className="w-1 h-4 bg-emerald-600 rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
-                <div className="w-1 h-6 bg-emerald-500 rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
-                <div className="w-1 h-4 bg-emerald-600 rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+        <div className="absolute left-0 right-0 bottom-0 px-4 sm:px-6 pb-4 pt-3 bg-gradient-to-t from-black/90 via-black/70 to-transparent text-white z-20">
+          <div className="flex items-center gap-3 text-xs text-white/60 mb-2">
+            <div className="flex items-center gap-2 uppercase tracking-[0.22em]">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <span>Playing</span>
+            </div>
+            <span className="text-white font-semibold truncate">{activeTitle || 'Your CV walkthrough'}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={isPlaying ? handlePause : handleResume}
+              className="h-12 w-12 rounded-full bg-white text-slate-900 flex items-center justify-center shadow-lg hover:-translate-y-0.5 transition"
+            >
+              {isPlaying ? (
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="4" width="4" height="16" rx="1" />
+                  <rect x="14" y="4" width="4" height="16" rx="1" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                  <polygon points="5,3 19,12 5,21" />
+                </svg>
+              )}
+            </button>
+
+            <div className="flex-1">
+              <div
+                ref={timelineRef}
+                className="relative h-2 bg-white/10 rounded-full overflow-hidden cursor-pointer group"
+                onMouseDown={handleTimelineScrub}
+                onClick={handleTimelineScrub}
+              >
+                <div
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-red-500 via-red-400 to-orange-400"
+                  style={{ width: `${timelineProgress * 100}%` }}
+                />
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-4 w-4 rounded-full bg-white shadow-lg shadow-red-500/40 opacity-0 group-hover:opacity-100 transition"
+                  style={{ left: `${timelineProgress * 100}%` }}
+                />
               </div>
-              <span className="text-emerald-800 text-sm font-medium">Speaking...</span>
-            </>
-          )}
+            </div>
+
+            <div className="flex items-center gap-2 text-xs tabular-nums text-white/70 min-w-[96px] justify-end">
+              <span>{formatTime(elapsedSeconds)}</span>
+              <span className="text-white/40">/</span>
+              <span>{formatTime(timelineDuration)}</span>
+            </div>
+
+            <button
+              onClick={() => setAudioEnabled(!audioEnabled)}
+              className="h-10 w-10 rounded-full bg-white/10 text-white border border-white/10 hover:border-white/40 flex items-center justify-center transition"
+              aria-label="Toggle sound"
+            >
+              {audioEnabled ? (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 5l6 4v6l-6 4V5z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 9v6a2 2 0 002 2h2" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 5l6 4v6l-6 4V5z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 9l14 6M5 15l14-6" />
+                </svg>
+              )}
+            </button>
+
+            <button
+              onClick={handleToggleFullscreen}
+              className="h-10 w-10 rounded-full bg-white/10 text-white border border-white/10 hover:border-white/40 flex items-center justify-center transition"
+              aria-label="Toggle fullscreen"
+            >
+              {isFullscreen ? (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l-4 0 0-4m10 0 4 0 0 4m0 6 0 4-4 0m-6 0-4 0 0-4" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H5v4m10-4h4v4m0 6v4h-4m-6 0H5v-4" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };
