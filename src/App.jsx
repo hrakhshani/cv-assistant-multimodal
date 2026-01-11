@@ -1412,7 +1412,7 @@ const OutroSlide = ({
               <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 5V2L7 7l5 5V9c2.757 0 5 2.243 5 5a5 5 0 11-8.66-3.11l-1.42-1.42A7 7 0 1012 5z" />
               </svg>
-              Replay walkthrough
+              Play Walkthrough
             </button>
             {missingAfterList.length > 0 && (
               <button
@@ -2218,13 +2218,6 @@ const CorrectionEditor = ({
                   }`}
                 >
                   Reject
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDecisionClick('pending')}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition"
-                >
-                  Reset
                 </button>
               </div>
             </div>
