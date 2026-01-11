@@ -2027,9 +2027,14 @@ const CorrectionEditor = ({
     }
   }, [refs, segments, update]);
 
+  useEffect(() => {
+    syncScroll();
+  }, [safeValue, segments, syncScroll]);
+
   const renderedSegments = useMemo(() => {
     const output = [];
     let cursor = 0;
+    const contentLength = safeValue.length;
 
     const markerColorByType = {
       correctness: '#17B26A',
@@ -2047,20 +2052,31 @@ const CorrectionEditor = ({
     };
 
     segments.forEach((seg, idx) => {
-      if (seg.start > cursor) {
-        output.push(safeValue.slice(cursor, seg.start));
+      const segStart = Math.max(0, Math.min(seg.start, contentLength));
+      const segEnd = Math.max(segStart, Math.min(seg.end, contentLength));
+      if (segStart > cursor) {
+        output.push(safeValue.slice(cursor, segStart));
+      }
+
+      const renderStart = Math.max(segStart, cursor);
+      const renderEnd = Math.max(renderStart, segEnd);
+      if (renderEnd <= renderStart) {
+        cursor = Math.max(cursor, segEnd);
+        return;
       }
 
       const decision = decisions[seg.change.id] || 'pending';
       const accentColor = markerColorByType[seg.change.type] || markerColorByType.clarity;
       const decisionStyles = decisionClass[decision] || decisionClass.pending;
+      const selectionStart = segStart;
+      const selectionEnd = segEnd;
 
       output.push(
         <span
           key={`${seg.change.id}-${idx}`}
           className="relative inline-block align-baseline pointer-events-auto"
         >
-          <span className="invisible select-none">{safeValue.slice(seg.start, seg.end)}</span>
+          <span className="invisible select-none">{safeValue.slice(renderStart, renderEnd)}</span>
           <button
             type="button"
             ref={(node) => registerSpan(seg.change.id, node)}
@@ -2076,7 +2092,7 @@ const CorrectionEditor = ({
               refs.setReference(e.currentTarget);
               if (resolvedEditorRef?.current) {
                 resolvedEditorRef.current.focus();
-                resolvedEditorRef.current.setSelectionRange(seg.start, seg.end);
+                resolvedEditorRef.current.setSelectionRange(selectionStart, selectionEnd);
               }
               requestAnimationFrame(() => update?.());
             }}
@@ -2088,10 +2104,10 @@ const CorrectionEditor = ({
         </span>
       );
 
-      cursor = seg.end;
+      cursor = Math.max(cursor, segEnd);
     });
 
-    if (cursor < safeValue.length) {
+    if (cursor < contentLength) {
       output.push(safeValue.slice(cursor));
     }
 
