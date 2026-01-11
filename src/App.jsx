@@ -755,7 +755,93 @@ Pronunciation: Clearly articulate artistic terminology (e.g., "brushstrokes," "l
 Personality Affect: Friendly and approachable with a hint of sophistication; speak confidently and reassuringly, guiding users through each painting step patiently and warmly.
 `;
 
-const AUDIO_CACHE_LIMIT = 8;
+const DEFAULT_AUDIO_CACHE_LIMIT = 8;
+const PREFETCH_AUDIO_CACHE_LIMIT = 36;
+const AUDIO_DB_NAME = 'cv-coach-tts-cache';
+const AUDIO_DB_STORE = 'audio';
+const PERSISTED_CACHE_LIMIT = 28;
+
+const sharedAudioStore = {
+  cache: new Map(),
+  prefetchTasks: new Map(),
+  order: [],
+  persistenceDisabled: false,
+  dbPromise: null
+};
+
+const supportsIndexedDb = () => typeof window !== 'undefined' && typeof window.indexedDB !== 'undefined';
+
+const openAudioDb = () => {
+  if (!supportsIndexedDb() || sharedAudioStore.persistenceDisabled) return Promise.resolve(null);
+  if (sharedAudioStore.dbPromise) return sharedAudioStore.dbPromise;
+
+  sharedAudioStore.dbPromise = new Promise((resolve) => {
+    try {
+      const request = window.indexedDB.open(AUDIO_DB_NAME, 1);
+      request.onerror = () => {
+        sharedAudioStore.persistenceDisabled = true;
+        resolve(null);
+      };
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(AUDIO_DB_STORE)) {
+          db.createObjectStore(AUDIO_DB_STORE);
+        }
+      };
+      request.onsuccess = () => {
+        resolve(request.result);
+      };
+    } catch (err) {
+      console.warn('IndexedDB unavailable for audio cache', err);
+      sharedAudioStore.persistenceDisabled = true;
+      resolve(null);
+    }
+  });
+
+  return sharedAudioStore.dbPromise;
+};
+
+const persistAudioBlob = async (key, blob) => {
+  if (!blob) return;
+  const db = await openAudioDb();
+  if (!db) return;
+  try {
+    const tx = db.transaction(AUDIO_DB_STORE, 'readwrite');
+    const store = tx.objectStore(AUDIO_DB_STORE);
+    store.put({ blob, updatedAt: Date.now() }, key);
+  } catch (err) {
+    console.warn('Could not persist audio blob', err);
+  }
+};
+
+const loadAudioBlob = async (key) => {
+  const db = await openAudioDb();
+  if (!db) return null;
+  try {
+    const tx = db.transaction(AUDIO_DB_STORE, 'readonly');
+    const store = tx.objectStore(AUDIO_DB_STORE);
+    const result = await new Promise((resolve) => {
+      const request = store.get(key);
+      request.onsuccess = () => resolve(request.result?.blob || null);
+      request.onerror = () => resolve(null);
+    });
+    return result || null;
+  } catch (err) {
+    console.warn('Could not read persisted audio', err);
+    return null;
+  }
+};
+
+const deletePersistedAudio = async (key) => {
+  const db = await openAudioDb();
+  if (!db) return;
+  try {
+    const tx = db.transaction(AUDIO_DB_STORE, 'readwrite');
+    tx.objectStore(AUDIO_DB_STORE).delete(key);
+  } catch (err) {
+    console.warn('Could not delete persisted audio', err);
+  }
+};
 
 const generateSpeech = async (text, apiKey, voice = 'onyx', speed = 1.2, signal) => {
   const response = await fetch('https://api.openai.com/v1/audio/speech', {
@@ -781,7 +867,7 @@ const generateSpeech = async (text, apiKey, voice = 'onyx', speed = 1.2, signal)
   }
 
   const audioBlob = await response.blob();
-  return URL.createObjectURL(audioBlob);
+  return { audioUrl: URL.createObjectURL(audioBlob), audioBlob };
 };
 
 // ============================================
@@ -794,9 +880,10 @@ const useAudioSystem = (apiKey) => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef(null);
-  const prefetchTasksRef = useRef(new Map());
-  const audioCacheRef = useRef(new Map());
-  const cacheOrderRef = useRef([]);
+  const prefetchTasksRef = useRef(sharedAudioStore.prefetchTasks);
+  const audioCacheRef = useRef(sharedAudioStore.cache);
+  const cacheOrderRef = useRef(sharedAudioStore.order);
+  const cacheLimitRef = useRef(Math.max(DEFAULT_AUDIO_CACHE_LIMIT, sharedAudioStore.order.length || 0));
 
   const makeCacheKey = useCallback((text, voice, speed) => `${voice}-${speed}-${text}`, []);
   const getSpeechKey = useCallback((text, voice = 'onyx', speed = 1.4) => makeCacheKey(text, voice, speed), [makeCacheKey]);
@@ -813,7 +900,8 @@ const useAudioSystem = (apiKey) => {
 
   const evictOverflow = useCallback(() => {
     const order = cacheOrderRef.current;
-    while (order.length > AUDIO_CACHE_LIMIT) {
+    const limit = cacheLimitRef.current || DEFAULT_AUDIO_CACHE_LIMIT;
+    while (order.length > limit) {
       const evictKey = order.shift();
       if (!evictKey) continue;
       const url = audioCacheRef.current.get(evictKey);
@@ -821,6 +909,7 @@ const useAudioSystem = (apiKey) => {
         URL.revokeObjectURL(url);
       }
       audioCacheRef.current.delete(evictKey);
+      deletePersistedAudio(evictKey);
     }
   }, []);
 
@@ -834,9 +923,22 @@ const useAudioSystem = (apiKey) => {
           URL.revokeObjectURL(url);
         }
         audioCacheRef.current.delete(key);
+        deletePersistedAudio(key);
       }
       return keep;
     });
+    evictOverflow();
+  }, [evictOverflow]);
+
+  const setCacheLimit = useCallback((nextLimit) => {
+    const bounded = Math.max(
+      DEFAULT_AUDIO_CACHE_LIMIT,
+      Math.min(
+        Math.min(PREFETCH_AUDIO_CACHE_LIMIT, PERSISTED_CACHE_LIMIT),
+        nextLimit || DEFAULT_AUDIO_CACHE_LIMIT
+      )
+    );
+    cacheLimitRef.current = bounded;
     evictOverflow();
   }, [evictOverflow]);
 
@@ -887,10 +989,14 @@ const useAudioSystem = (apiKey) => {
     playTone(freqs[category] || 523, 0.15, 'triangle');
   }, [playTone]);
 
-  const clearCachedAudio = useCallback(() => {
+  const clearCachedAudio = useCallback((options = {}) => {
+    const { flushPersistent = false } = options;
     prefetchTasksRef.current.forEach(({ controller }) => controller.abort());
     prefetchTasksRef.current.clear();
-    audioCacheRef.current.forEach((url) => URL.revokeObjectURL(url));
+    audioCacheRef.current.forEach((url, key) => {
+      URL.revokeObjectURL(url);
+      if (flushPersistent) deletePersistedAudio(key);
+    });
     audioCacheRef.current.clear();
     cacheOrderRef.current = [];
   }, []);
@@ -907,25 +1013,41 @@ const useAudioSystem = (apiKey) => {
 
     const controller = new AbortController();
 
-    const promise = generateSpeech(text, apiKey, voice, speed, controller.signal)
-      .then((audioUrl) => {
+    const promise = (async () => {
+      try {
+        const persistedBlob = await loadAudioBlob(key);
+        if (controller.signal.aborted) return null;
+
+        if (persistedBlob) {
+          const persistedUrl = URL.createObjectURL(persistedBlob);
+          audioCacheRef.current.set(key, persistedUrl);
+          registerCacheUse(key);
+          evictOverflow();
+          return persistedUrl;
+        }
+
+        const { audioUrl, audioBlob } = await generateSpeech(text, apiKey, voice, speed, controller.signal);
         if (controller.signal.aborted) {
-          URL.revokeObjectURL(audioUrl);
+          if (audioUrl) URL.revokeObjectURL(audioUrl);
           return null;
         }
-        audioCacheRef.current.set(key, audioUrl);
-        registerCacheUse(key);
-        evictOverflow();
-        prefetchTasksRef.current.delete(key);
+
+        if (audioUrl) {
+          audioCacheRef.current.set(key, audioUrl);
+          registerCacheUse(key);
+          evictOverflow();
+          persistAudioBlob(key, audioBlob).catch(() => {});
+        }
         return audioUrl;
-      })
-      .catch((error) => {
+      } catch (error) {
         if (error.name !== 'AbortError') {
           console.error('TTS prefetch error:', error);
         }
-        prefetchTasksRef.current.delete(key);
         return null;
-      });
+      } finally {
+        prefetchTasksRef.current.delete(key);
+      }
+    })();
 
     prefetchTasksRef.current.set(key, { controller, promise });
     return promise;
@@ -950,6 +1072,7 @@ const useAudioSystem = (apiKey) => {
 
     const key = makeCacheKey(text, voice, speed);
     let audioUrl = audioCacheRef.current.get(key);
+    let fetchedBlob = null;
     if (audioUrl) {
       registerCacheUse(key);
     }
@@ -963,7 +1086,9 @@ const useAudioSystem = (apiKey) => {
       }
 
       if (!audioUrl) {
-        audioUrl = await generateSpeech(text, apiKey, voice, speed, abortControllerRef.current.signal);
+        const result = await generateSpeech(text, apiKey, voice, speed, abortControllerRef.current.signal);
+        audioUrl = result?.audioUrl || null;
+        fetchedBlob = result?.audioBlob || null;
       }
       
       if (abortControllerRef.current?.signal.aborted) {
@@ -977,6 +1102,7 @@ const useAudioSystem = (apiKey) => {
         audioCacheRef.current.set(key, audioUrl);
         registerCacheUse(key);
         evictOverflow();
+        persistAudioBlob(key, fetchedBlob).catch(() => {});
       }
 
       const audio = new Audio(audioCacheRef.current.get(key));
@@ -993,6 +1119,7 @@ const useAudioSystem = (apiKey) => {
           URL.revokeObjectURL(cachedUrl);
           audioCacheRef.current.delete(key);
         }
+        deletePersistedAudio(key);
         const orderIdx = cacheOrderRef.current.indexOf(key);
         if (orderIdx !== -1) {
           cacheOrderRef.current.splice(orderIdx, 1);
@@ -1039,7 +1166,7 @@ const useAudioSystem = (apiKey) => {
     }
     
     if (flushCache) {
-      clearCachedAudio();
+      clearCachedAudio({ flushPersistent: true });
     }
 
     setIsSpeaking(false);
@@ -1054,9 +1181,9 @@ const useAudioSystem = (apiKey) => {
       if (audioRef.current) {
         audioRef.current.pause();
       }
-      clearCachedAudio();
+      cancelPrefetches([]);
     };
-  }, [clearCachedAudio]);
+  }, [cancelPrefetches]);
 
   return { 
     playTone, 
@@ -1066,6 +1193,7 @@ const useAudioSystem = (apiKey) => {
     prefetchSpeech, 
     cancelPrefetches, 
     pruneCache, 
+    setCacheLimit,
     getSpeechKey,
     stop, 
     isSpeaking, 
@@ -2235,6 +2363,11 @@ const CorrectionEditor = ({
 
 const PREFETCH_SLIDE_AHEAD = 3;
 const PRESENTATION_SPEECH_SPEED = 1.0;
+const PRESENTATION_TIMING = {
+  introToHighlight: 200,
+  highlightToBeforeAfter: 400,
+  beforeAfterToAudio: 200
+};
 
 const Presentation = ({ 
   cvText, 
@@ -2269,7 +2402,7 @@ const Presentation = ({
     setCurrentSlide(changes.length); // drop to summary instead of bouncing to first page
   };
   
-  const { playTransition, playHighlight, speak, prefetchSpeech, cancelPrefetches, pruneCache, getSpeechKey, stop, isSpeaking, isLoading } = useAudioSystem(apiKey);
+  const { playTransition, playHighlight, speak, prefetchSpeech, cancelPrefetches, pruneCache, setCacheLimit, getSpeechKey, stop, isSpeaking, isLoading } = useAudioSystem(apiKey);
   const timeoutRef = useRef(null);
   const editorRef = useRef(null);
   const playerRef = useRef(null);
@@ -2299,6 +2432,33 @@ const Presentation = ({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   }, []);
 
+  const buildSpeechPlan = useCallback(() => {
+    if (!changes.length) return [];
+    const unique = new Map();
+
+    changes.forEach((change, idx) => {
+      const script = generateScript(change, idx, changes.length, score);
+      if (!script) return;
+
+      const segments = [
+        ['intro', script.narrativeIntro],
+        ['main', script.mainExplanation || script.description || change.description],
+        ['impact', script.impact]
+      ];
+
+      segments.forEach(([slot, text]) => {
+        const trimmed = (text || '').trim();
+        if (!trimmed) return;
+        const key = getSpeechKey(trimmed, selectedVoice, PRESENTATION_SPEECH_SPEED);
+        if (!unique.has(key)) {
+          unique.set(key, { key, text: trimmed, slot, slideIndex: idx });
+        }
+      });
+    });
+
+    return Array.from(unique.values());
+  }, [changes, getSpeechKey, score, selectedVoice]);
+
   const clearTimeouts = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
   };
@@ -2306,6 +2466,49 @@ const Presentation = ({
   useEffect(() => {
     setEditorValue(improvedCV || '');
   }, [improvedCV]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!changes.length || !apiKey) {
+      pruneCache([]);
+      cancelPrefetches([]);
+      setCacheLimit(DEFAULT_AUDIO_CACHE_LIMIT);
+      return undefined;
+    }
+
+    const plan = buildSpeechPlan();
+    if (!plan.length) return undefined;
+
+    const planKeys = plan.map((item) => item.key);
+    const desiredLimit = Math.max(
+      DEFAULT_AUDIO_CACHE_LIMIT,
+      Math.min(PREFETCH_AUDIO_CACHE_LIMIT, planKeys.length + 4)
+    );
+
+    setCacheLimit(desiredLimit);
+    pruneCache(planKeys);
+    cancelPrefetches(planKeys);
+
+    const prefetchAllSlides = async () => {
+      for (const item of plan) {
+        if (cancelled) break;
+        try {
+          await prefetchSpeech(item.text, selectedVoice, PRESENTATION_SPEECH_SPEED);
+        } catch (err) {
+          if (err?.name !== 'AbortError') {
+            console.warn('Warmup prefetch failed', err);
+          }
+        }
+      }
+    };
+
+    prefetchAllSlides();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKey, buildSpeechPlan, cancelPrefetches, changes.length, prefetchSpeech, pruneCache, selectedVoice, setCacheLimit]);
 
   useEffect(() => {
     const prev = prevChangeCountRef.current;
@@ -2331,16 +2534,13 @@ const Presentation = ({
     }
 
     if (!audioEnabled) {
-      cancelPrefetches([]);
       return;
     }
 
     if (anchorIndex >= changes.length) {
-      cancelPrefetches([]);
       return;
     }
 
-    const allowedKeys = new Set();
     const startIndex = Math.max(0, anchorIndex < 0 ? 0 : anchorIndex);
     const endIndex = Math.min(changes.length - 1, startIndex + PREFETCH_SLIDE_AHEAD);
 
@@ -2349,27 +2549,18 @@ const Presentation = ({
       if (!script) continue;
 
       if (script.narrativeIntro?.trim()) {
-        const introKey = getSpeechKey(script.narrativeIntro, selectedVoice, PRESENTATION_SPEECH_SPEED);
-        allowedKeys.add(introKey);
         prefetchSpeech(script.narrativeIntro, selectedVoice, PRESENTATION_SPEECH_SPEED);
       }
 
       if (script.mainExplanation?.trim()) {
-        const mainKey = getSpeechKey(script.mainExplanation, selectedVoice, PRESENTATION_SPEECH_SPEED);
-        allowedKeys.add(mainKey);
         prefetchSpeech(script.mainExplanation, selectedVoice, PRESENTATION_SPEECH_SPEED);
       }
 
       if (script.impact?.trim()) {
-        const impactKey = getSpeechKey(script.impact, selectedVoice, PRESENTATION_SPEECH_SPEED);
-        allowedKeys.add(impactKey);
         prefetchSpeech(script.impact, selectedVoice, PRESENTATION_SPEECH_SPEED);
       }
     }
-
-    const allowedList = Array.from(allowedKeys);
-    cancelPrefetches(allowedList);
-  }, [audioEnabled, cancelPrefetches, changes, getSpeechKey, prefetchSpeech, pruneCache, score, selectedVoice]);
+  }, [audioEnabled, cancelPrefetches, changes, prefetchSpeech, pruneCache, score, selectedVoice]);
 
   useEffect(() => {
     refreshPrefetchWindow(currentSlide);
@@ -2466,11 +2657,11 @@ const Presentation = ({
               }
             }, 3000);
           }
-        }, 800); // Wait 800ms after showing before-after, then start audio
+        }, PRESENTATION_TIMING.beforeAfterToAudio); // Small pause after before-after, then start audio
         
-      }, 1000); // Wait 1s to show before-after after highlight
+      }, PRESENTATION_TIMING.highlightToBeforeAfter); // Brief pause to show highlight before before-after
       
-    }, 500); // Wait 500ms to show highlight after intro
+    }, PRESENTATION_TIMING.introToHighlight); // Quick ramp from intro into highlight
     
   }, [changes, score, audioEnabled, isPlaying, playHighlight, speak, prefetchSpeech, selectedVoice]);
 
@@ -2805,24 +2996,6 @@ const Presentation = ({
               <span className="text-white/40">/</span>
               <span>{formatTime(timelineDuration)}</span>
             </div>
-
-            <button
-              onClick={() => setAudioEnabled(!audioEnabled)}
-              className="h-10 w-10 rounded-full bg-white/10 text-white border border-white/10 hover:border-white/40 flex items-center justify-center transition"
-              aria-label="Toggle sound"
-            >
-              {audioEnabled ? (
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 5l6 4v6l-6 4V5z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 9v6a2 2 0 002 2h2" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 5l6 4v6l-6 4V5z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 9l14 6M5 15l14-6" />
-                </svg>
-              )}
-            </button>
 
             <button
               onClick={handleToggleFullscreen}
