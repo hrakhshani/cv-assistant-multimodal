@@ -3662,6 +3662,7 @@ Responsibilities:
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">Job description</label>
             <textarea
+              id = "job_description_text_area"
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
               placeholder="Paste the job posting you're applying to..."
