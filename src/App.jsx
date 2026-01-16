@@ -3717,7 +3717,7 @@ Responsibilities:
                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                         <polygon points="5,3 19,12 5,21" />
                       </svg>
-                      Start Walkthrough
+                      Start Analysis
                     </>
                   )}
                 </button>
