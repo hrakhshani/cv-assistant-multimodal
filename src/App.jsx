@@ -3067,20 +3067,141 @@ const extractTextFromPdf = async (file) => {
   const pdf = await getDocument({ data: pdfData }).promise;
   const pageTexts = [];
 
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-    const page = await pdf.getPage(pageNumber);
-    const content = await page.getTextContent();
-    const strings = content.items
-      .map((item) => (typeof item?.str === 'string' ? item.str : ''))
-      .filter(Boolean);
-    pageTexts.push(strings.join(' '));
+    
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
+    const page = await pdf.getPage(pageNum);
+
+    // Improves mapping to human coordinates (optional but recommended)
+    const viewport = page.getViewport({ scale: 1.0 });
+
+    const content = await page.getTextContent({
+      includeMarkedContent: true,
+      disableCombineTextItems: false,
+    });
+
+    const text = buildTextWithLayout(content.items, viewport);
+    if (text.trim()) pageTexts.push(text.trim());
   }
 
-  pdf.cleanup?.();
-  pdf.destroy?.();
-
-  return pageTexts.join('\n\n');
+  // Keep page boundaries as blank line (tune as you wish)
+  return pageTexts.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
 };
+
+function buildTextWithLayout(items, viewport) {
+  // Convert item coordinates to viewport coords and keep useful geometry
+  const mapped = items
+    .filter((it) => it.str && it.str.trim() !== "")
+    .map((it) => {
+      const tx = pdfjsLib.Util.transform(
+        pdfjsLib.Util.transform(viewport.transform, it.transform),
+        [1, 0, 0, 1, 0, 0]
+      );
+
+      // tx = [a,b,c,d,e,f] where (e,f) is the transformed origin
+      const x = tx[4];
+      const y = tx[5];
+
+      // Approx item width/height in viewport space
+      const w = it.width * viewport.scale;
+      const h = it.height * viewport.scale;
+
+      return {
+        str: it.str,
+        x,
+        y,
+        w,
+        h,
+      };
+    });
+
+  if (!mapped.length) return "";
+
+  // Sort top-to-bottom then left-to-right
+  // NOTE: in viewport coords, y typically increases downward.
+  mapped.sort((a, b) => (a.y - b.y) || (a.x - b.x));
+
+  // Group into lines by y
+  const lines = [];
+  const yTolerance = 3; // tune: 2–6 depending on PDFs
+  let currentLine = [];
+  let currentY = mapped[0].y;
+
+  for (const it of mapped) {
+    if (Math.abs(it.y - currentY) <= yTolerance) {
+      currentLine.push(it);
+    } else {
+      lines.push(currentLine);
+      currentLine = [it];
+      currentY = it.y;
+    }
+  }
+  if (currentLine.length) lines.push(currentLine);
+
+  // For each line, sort by x and stitch fragments with spacing heuristics
+  const lineTexts = [];
+  let prevLineY = null;
+  let prevLineH = null;
+
+  for (const line of lines) {
+    line.sort((a, b) => a.x - b.x);
+
+    // Stitch line fragments
+    let out = "";
+    let prev = null;
+
+    for (const frag of line) {
+      if (!prev) {
+        out += frag.str;
+        prev = frag;
+        continue;
+      }
+
+      const gap = frag.x - (prev.x + prev.w);
+
+      // Heuristic: insert a space if there is a visible gap
+      // Threshold scaled by text height; tune factor if needed.
+      const spaceThreshold = Math.max(2, prev.h * 0.25);
+
+      // Also avoid duplicating spaces if frag already starts with one
+      if (gap > spaceThreshold && !out.endsWith(" ") && !frag.str.startsWith(" ")) {
+        out += " ";
+      }
+
+      out += frag.str;
+      prev = frag;
+    }
+
+    out = normalizeLine(out);
+
+    // Decide newline vs paragraph break
+    if (prevLineY == null) {
+      lineTexts.push(out);
+    } else {
+      const dy = line[0].y - prevLineY;
+      const typicalLineHeight = Math.max(prevLineH ?? 10, line[0].h);
+
+      // If there is a bigger-than-normal vertical gap, treat as paragraph break
+      const paragraphGap = typicalLineHeight * 1.4;
+
+      if (dy > paragraphGap) lineTexts.push("", out); // blank line between paragraphs
+      else lineTexts.push(out);
+    }
+
+    prevLineY = line[0].y;
+    prevLineH = line[0].h;
+  }
+
+  // Final text
+  return lineTexts.join("\n").replace(/[ \t]+\n/g, "\n");
+}
+
+function normalizeLine(s) {
+  // Keep indentation? If you want indentation, remove the trimStart().
+  // Many PDFs encode indentation as x-position, so trimming usually helps.
+  return s
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 const extractTextFromFile = async (file) => {
   const isPdf = file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf');
