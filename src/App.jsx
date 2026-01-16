@@ -746,8 +746,11 @@ const applySuggestionsToCV = (cvText, suggestions = []) => {
 
 // Re-check which keywords remain missing after applying the replacements
 const computeMissingKeywordsAfter = (keywordsInJob = [], updatedCV = '') => {
-  const loweredCV = updatedCV.toLowerCase();
-  return keywordsInJob.filter((kw) => !loweredCV.includes(kw.toLowerCase()));
+  const haystack = typeof updatedCV === 'string' ? updatedCV : '';
+  return (keywordsInJob || [])
+    .map((kw) => (typeof kw === 'string' ? kw : '').trim())
+    .filter(Boolean)
+    .filter((kw) => !keywordMatchesText(kw, haystack));
 };
 
 const MANUAL_DEBOUNCE_MS = 1500;
