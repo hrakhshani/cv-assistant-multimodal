@@ -325,9 +325,24 @@ ${jobDescription}`;
   }
 };
 
+const keywordBoundaryRegex = (keyword) => {
+  const cleaned = typeof keyword === 'string' ? keyword.trim() : '';
+  if (!cleaned) return null;
+  const escaped = cleaned
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\s+/g, '\\s+');
+  // Treat letters, numbers, +, and # as part of a keyword; everything else is a boundary.
+  return new RegExp(`(^|[^A-Za-z0-9+#])(${escaped})([^A-Za-z0-9+#]|$)`, 'i');
+};
+
+const keywordMatchesText = (keyword, text) => {
+  const regex = keywordBoundaryRegex(keyword);
+  if (!regex) return false;
+  const haystack = typeof text === 'string' ? text : '';
+  return regex.test(haystack);
+};
+
 const validateKeywords = (keywords = [], jobDescription = '', cvText = '') => {
-  const jobDescLower = jobDescription.toLowerCase();
-  const cvTextLower = cvText.toLowerCase();
   const seen = new Set();
 
   return keywords
@@ -340,11 +355,10 @@ const validateKeywords = (keywords = [], jobDescription = '', cvText = '') => {
       return true;
     })
     .map((keyword) => {
-      const keywordLower = keyword.toLowerCase();
       return {
         keyword,
-        inJobDescription: jobDescLower.includes(keywordLower),
-        inCV: cvTextLower.includes(keywordLower)
+        inJobDescription: keywordMatchesText(keyword, jobDescription),
+        inCV: keywordMatchesText(keyword, cvText)
       };
     });
 };
