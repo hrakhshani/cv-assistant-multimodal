@@ -3341,6 +3341,11 @@ const extractTextFromFile = async (file) => {
   return readPlainTextFile(file);
 };
 
+const STORAGE_KEYS = {
+  lastCv: 'cv-coach-last-cv-text',
+  lastJob: 'cv-coach-last-job-description'
+};
+
 const InputView = ({ onAnalyze, isLoading, progress }) => {
   const [cvText, setCvText] = useState('');
   const [jobDescription, setJobDescription] = useState('');
@@ -3369,15 +3374,21 @@ const InputView = ({ onAnalyze, isLoading, progress }) => {
   const [uploadError, setUploadError] = useState('');
   const [isReadingFile, setIsReadingFile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [hasHydratedSavedText, setHasHydratedSavedText] = useState(false);
 
   // Load saved settings
   useEffect(() => {
     const savedKey = localStorage.getItem('cv-coach-api-key');
     const savedProvider = localStorage.getItem('cv-coach-api-provider');
     const savedVoice = localStorage.getItem('cv-coach-voice');
+    const savedCv = localStorage.getItem(STORAGE_KEYS.lastCv);
+    const savedJob = localStorage.getItem(STORAGE_KEYS.lastJob);
     if (savedKey) setApiKey(savedKey);
     if (savedProvider) setApiProvider(savedProvider);
     if (savedVoice) setSelectedVoice(savedVoice);
+    if (savedCv) setCvText(savedCv);
+    if (savedJob) setJobDescription(savedJob);
+    setHasHydratedSavedText(true);
   }, []);
 
   // Save settings
@@ -3386,6 +3397,13 @@ const InputView = ({ onAnalyze, isLoading, progress }) => {
     localStorage.setItem('cv-coach-api-provider', apiProvider);
     localStorage.setItem('cv-coach-voice', selectedVoice);
   }, [apiKey, apiProvider, selectedVoice]);
+
+  // Persist last used CV and job description
+  useEffect(() => {
+    if (!hasHydratedSavedText) return;
+    localStorage.setItem(STORAGE_KEYS.lastCv, cvText || '');
+    localStorage.setItem(STORAGE_KEYS.lastJob, jobDescription || '');
+  }, [cvText, jobDescription, hasHydratedSavedText]);
 
   useEffect(() => {
     if (!isLoading) {
@@ -3699,7 +3717,7 @@ Responsibilities:
                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                         <polygon points="5,3 19,12 5,21" />
                       </svg>
-                      Start Walkthrough
+                      Start Analysis
                     </>
                   )}
                 </button>
