@@ -750,6 +750,120 @@ const computeMissingKeywordsAfter = (keywordsInJob = [], updatedCV = '') => {
   return keywordsInJob.filter((kw) => !loweredCV.includes(kw.toLowerCase()));
 };
 
+const MANUAL_DEBOUNCE_MS = 1500;
+
+// Identify which validated keywords were newly introduced between two texts
+const findNewKeywordsInDiff = (before = '', after = '', validatedKeywords = null) => {
+  const inJob = validatedKeywords?.inJob || [];
+  if (!Array.isArray(inJob) || inJob.length === 0) return [];
+
+  const beforeLower = before.toLowerCase();
+  const afterLower = after.toLowerCase();
+
+  return inJob.filter((kw) => {
+    const term = (kw || '').toLowerCase();
+    if (!term) return false;
+    return afterLower.includes(term) && !beforeLower.includes(term);
+  });
+};
+
+// Build a manual change entry from a text diff
+const buildManualChangeEntry = (before = '', after = '', changeId, validatedKeywords = null) => {
+  if (before === after) return null;
+
+  const minLength = Math.min(before.length, after.length);
+  let start = 0;
+  while (start < minLength && before[start] === after[start]) {
+    start += 1;
+  }
+
+  let endBefore = before.length - 1;
+  let endAfter = after.length - 1;
+  while (endBefore >= start && endAfter >= start && before[endBefore] === after[endAfter]) {
+    endBefore -= 1;
+    endAfter -= 1;
+  }
+
+  const original = before.slice(start, endBefore + 1);
+  const replacement = after.slice(start, endAfter + 1);
+
+  // Skip empty replacements (pure deletions don't render well in the overlay)
+  if (!replacement) return null;
+
+  const addedKeywords = findNewKeywordsInDiff(before, after, validatedKeywords);
+  const type = addedKeywords.length > 0 ? 'keyword' : 'clarity';
+  const title = addedKeywords.length > 0
+    ? `Added keyword${addedKeywords.length > 1 ? 's' : ''}`
+    : 'Manual edit';
+  const description = addedKeywords.length > 0
+    ? `You manually added ${addedKeywords.length === 1 ? 'a keyword' : 'keywords'}: ${addedKeywords.join(', ')}.`
+    : 'You manually edited this section directly in the draft.';
+
+  const startIndex = Math.min(start, after.length);
+  const endIndex = startIndex + replacement.length;
+
+  return {
+    id: changeId,
+    type,
+    title,
+    description,
+    original,
+    replacement,
+    importance: 'medium',
+    rationale: 'Captured from manual edits in the editor.',
+    startIndex,
+    endIndex,
+    manual: true,
+    addedKeywords
+  };
+};
+
+// Apply a change to a given text (used when toggling decisions)
+const applyChangeToText = (text = '', change) => {
+  if (!change) return text || '';
+  const source = typeof text === 'string' ? text : '';
+  const replacement = typeof change.replacement === 'string' ? change.replacement : '';
+  const original = typeof change.original === 'string' ? change.original : '';
+  const hint = typeof change.startIndex === 'number' ? Math.max(0, change.startIndex) : 0;
+
+  if (original) {
+    let idx = source.indexOf(original, hint);
+    if (idx === -1) idx = source.indexOf(original);
+    if (idx === -1) {
+      // Possibly already applied
+      return source;
+    }
+    return `${source.slice(0, idx)}${replacement || original}${source.slice(idx + original.length)}`;
+  }
+
+  if (replacement) {
+    const alreadyHas = source.indexOf(replacement, hint) !== -1 || source.indexOf(replacement) !== -1;
+    if (alreadyHas) return source;
+    const safeHint = Math.min(hint, source.length);
+    return `${source.slice(0, safeHint)}${replacement}${source.slice(safeHint)}`;
+  }
+
+  return source;
+};
+
+// Revert a change inside a text (swap replacement back to original)
+const revertChangeInText = (text = '', change) => {
+  if (!change) return text || '';
+  const source = typeof text === 'string' ? text : '';
+  const replacement = typeof change.replacement === 'string' ? change.replacement : '';
+  const original = typeof change.original === 'string' ? change.original : '';
+  const hint = typeof change.startIndex === 'number' ? Math.max(0, change.startIndex) : 0;
+
+  if (replacement) {
+    let idx = source.indexOf(replacement, hint);
+    if (idx === -1) idx = source.indexOf(replacement);
+    if (idx === -1) return source;
+    return `${source.slice(0, idx)}${original || ''}${source.slice(idx + replacement.length)}`;
+  }
+
+  return source;
+};
+
 //export { analyzeCV, extractKeywords, validateKeywords };
 
 // ============================================
@@ -1477,6 +1591,7 @@ const OutroSlide = ({
   editorValue,
   onEditorChange,
   changes,
+  manualChanges = [],
   decisions,
   onDecisionChange,
   onSendUserRequest,
@@ -1487,6 +1602,7 @@ const OutroSlide = ({
   const [message, setMessage] = useState('');
   const [showKeywords, setShowKeywords] = useState(false);
   const { isSupported, isListening, transcript, error: voiceError, startListening, stopListening, resetTranscript } = useSpeechToText();
+  const combinedChanges = useMemo(() => [...changes, ...manualChanges], [changes, manualChanges]);
 
   useEffect(() => {
     if (isListening) {
@@ -1601,7 +1717,7 @@ const OutroSlide = ({
             value={editorValue ?? improvedCV ?? ''}
             onChange={(next) => onEditorChange?.(next)}
             editorRef={editorRef}
-            changes={changes}
+            changes={combinedChanges}
             decisions={decisions}
             onDecisionChange={onDecisionChange}
           />
@@ -2392,8 +2508,11 @@ const Presentation = ({
   selectedVoice, 
   improvedCV, 
   keywordSnapshot,
+  manualChanges = [],
   decisions,
   onDecisionChange,
+  editorValue,
+  onEditorChange,
   onApplyAll,
   onUserRequest,
   isUserRequesting,
@@ -2404,7 +2523,6 @@ const Presentation = ({
   const [phase, setPhase] = useState('intro');
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
-  const [editorValue, setEditorValue] = useState(improvedCV || '');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isCinematic, setIsCinematic] = useState(false);
   const handleCloseOverlay = () => {
@@ -2476,10 +2594,6 @@ const Presentation = ({
   const clearTimeouts = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
   };
-
-  useEffect(() => {
-    setEditorValue(improvedCV || '');
-  }, [improvedCV]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2854,9 +2968,10 @@ const Presentation = ({
             keywordSnapshot={keywordSnapshot}
             onApplyAll={onApplyAll}
             editorRef={editorRef}
-            editorValue={editorValue}
-            onEditorChange={setEditorValue}
+            editorValue={editorValue || improvedCV || cvText}
+            onEditorChange={onEditorChange}
             changes={changes}
+            manualChanges={manualChanges}
             decisions={decisions}
             onDecisionChange={onDecisionChange}
             onSendUserRequest={onUserRequest}
@@ -3699,6 +3814,11 @@ export default function App() {
   const [keywordDraft, setKeywordDraft] = useState([]);
   const [isUserRequesting, setIsUserRequesting] = useState(false);
   const [userRequestError, setUserRequestError] = useState(null);
+  const [editorText, setEditorText] = useState('');
+  const [manualChanges, setManualChanges] = useState([]);
+  const manualSessionRef = useRef({ id: null, baseText: '', lastUpdated: 0 });
+  const manualDebounceRef = useRef(null);
+  const manualPendingRef = useRef(null);
 
   const addLogEntry = useCallback((entry) => {
     setLogs((prev) => {
@@ -3722,6 +3842,11 @@ export default function App() {
   const clearLogs = useCallback(() => setLogs([]), []);
 
   const handleAnalyze = async (cv, job, key, apiProviderChoice, voice) => {
+    if (manualDebounceRef.current) {
+      clearTimeout(manualDebounceRef.current);
+      manualDebounceRef.current = null;
+    }
+    manualPendingRef.current = null;
     setIsLoading(true);
     setError(null);
     setCvText(cv);
@@ -3740,6 +3865,9 @@ export default function App() {
     setKeywordReviewOpen(false);
     setUserRequestError(null);
     setIsUserRequesting(false);
+    setEditorText(cv || '');
+    setManualChanges([]);
+    manualSessionRef.current = { id: null, baseText: cv || '', lastUpdated: 0 };
     setAnalysisProgress({
       stage: 'keywords',
       totalKeywords: null,
@@ -3850,7 +3978,10 @@ export default function App() {
         missingBeforeList: result.validatedKeywords?.missing || [],
         missingAfterList: missingAfterProposed
       });
-      setImprovedCV(cv); // applied version reflects user choices later
+      setImprovedCV(proposedText);
+      setEditorText(proposedText || cv || '');
+      setManualChanges([]);
+      manualSessionRef.current = { id: null, baseText: proposedText || cv || '', lastUpdated: 0 };
       setView('presentation');
       setAnalysisProgress(null);
     } catch (err) {
@@ -3869,6 +4000,11 @@ export default function App() {
   };
 
   const handleBack = () => {
+    if (manualDebounceRef.current) {
+      clearTimeout(manualDebounceRef.current);
+      manualDebounceRef.current = null;
+    }
+    manualPendingRef.current = null;
     setView('input');
     setChanges([]);
     setAnalysisProgress(null);
@@ -3884,44 +4020,129 @@ export default function App() {
     setJobDescription('');
     setUserRequestError(null);
     setIsUserRequesting(false);
+    setEditorText('');
+    setManualChanges([]);
+    manualSessionRef.current = { id: null, baseText: '', lastUpdated: 0 };
   };
 
   useEffect(() => {
-    if (!cvText) {
-      setImprovedCV('');
+    setImprovedCV(editorText || '');
+  }, [editorText]);
+
+  useEffect(() => {
+    if (!validatedKeywords) {
       setKeywordSnapshot(null);
-      setProposedCV('');
-      setProposedKeywordSnapshot(null);
       return;
     }
 
-    const appliedChanges = changes.filter((change) => {
-      const decision = suggestionDecisions[change.id] || 'pending';
-      return decision !== 'rejected' && decision !== 'skipped';
+    const missingAfter = computeMissingKeywordsAfter(validatedKeywords.inJob, editorText || '');
+    setKeywordSnapshot({
+      total: validatedKeywords.inJob?.length || 0,
+      before: validatedKeywords.missing?.length || 0,
+      after: missingAfter.length,
+      missingBeforeList: validatedKeywords.missing || [],
+      missingAfterList: missingAfter
     });
+  }, [editorText, validatedKeywords]);
 
-    const { text: improvedText } = applySuggestionsToCV(cvText, appliedChanges);
-    setImprovedCV(improvedText);
+  const handleEditorTextChange = useCallback((nextText) => {
+    setEditorText((prevText) => {
+      const prevValue = typeof prevText === 'string' ? prevText : '';
+      if (prevValue === nextText) return prevText;
 
-    if (validatedKeywords) {
-      const missingAfter = computeMissingKeywordsAfter(validatedKeywords.inJob, improvedText);
-      setKeywordSnapshot({
-        total: validatedKeywords.inJob?.length || 0,
-        before: validatedKeywords.missing?.length || 0,
-        after: missingAfter.length,
-        missingBeforeList: validatedKeywords.missing || [],
-        missingAfterList: missingAfter
-      });
-    } else {
-      setKeywordSnapshot(null);
-    }
-  }, [changes, suggestionDecisions, cvText, validatedKeywords]);
+      const now = Date.now();
+      const sessionExpired = now - (manualSessionRef.current.lastUpdated || 0) > MANUAL_DEBOUNCE_MS * 1.5;
+      if (!manualSessionRef.current.id || sessionExpired) {
+        manualSessionRef.current = {
+          id: `manual-${now}`,
+          baseText: prevValue,
+          lastUpdated: now
+        };
+      } else {
+        manualSessionRef.current.lastUpdated = now;
+      }
+
+      manualPendingRef.current = {
+        id: manualSessionRef.current.id,
+        baseText: manualSessionRef.current.baseText,
+        nextText
+      };
+
+      if (manualDebounceRef.current) {
+        clearTimeout(manualDebounceRef.current);
+      }
+
+      manualDebounceRef.current = setTimeout(() => {
+        const { id, baseText, nextText: pendingText } = manualPendingRef.current || {};
+        if (!id) return;
+
+        const change = buildManualChangeEntry(
+          baseText,
+          pendingText,
+          id,
+          validatedKeywords
+        );
+
+        if (change) {
+          setManualChanges((prevList) => {
+            const idx = prevList.findIndex((c) => c.id === change.id);
+            if (idx >= 0) {
+              const copy = [...prevList];
+              copy[idx] = change;
+              return copy;
+            }
+            return [...prevList, change];
+          });
+          setSuggestionDecisions((prevDecisions) => ({
+            ...prevDecisions,
+            [change.id]: 'accepted'
+          }));
+        } else if (id) {
+          setManualChanges((prevList) => prevList.filter((c) => c.id !== id));
+          setSuggestionDecisions((prevDecisions) => {
+            if (prevDecisions[id]) {
+              const next = { ...prevDecisions };
+              delete next[id];
+              return next;
+            }
+            return prevDecisions;
+          });
+        }
+      }, MANUAL_DEBOUNCE_MS);
+
+      return nextText;
+    });
+  }, [validatedKeywords]);
 
   const handleDecisionChange = (id, decision) => {
     setSuggestionDecisions((prev) => ({
       ...prev,
       [id]: decision
     }));
+
+    const combinedChanges = [...changes, ...manualChanges];
+    const targetChange = combinedChanges.find((c) => c.id === id);
+    if (!targetChange) return;
+
+    if (targetChange.manual && decision === 'rejected') {
+      setEditorText((prev) => revertChangeInText(prev, targetChange));
+      setManualChanges((prevList) => prevList.filter((c) => c.id !== id));
+      setSuggestionDecisions((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      return;
+    }
+
+    if (decision === 'rejected') {
+      setEditorText((prev) => revertChangeInText(prev, targetChange));
+      return;
+    }
+
+    if (decision === 'accepted') {
+      setEditorText((prev) => applyChangeToText(prev, targetChange));
+    }
   };
 
   const handleApplyAll = () => {
@@ -3931,6 +4152,11 @@ export default function App() {
         next[change.id] = 'accepted';
       });
       return next;
+    });
+    setEditorText((prev) => {
+      const base = typeof prev === 'string' && prev ? prev : (cvText || '');
+      const { text } = applySuggestionsToCV(base, changes);
+      return text;
     });
   };
 
@@ -3953,10 +4179,12 @@ export default function App() {
     setUserRequestError(null);
 
     try {
+      const baseDraft = editorText || cvText;
+      const currentDraft = editorText || improvedCV || cvText;
       const { suggestions: rawSuggestions } = await generateUserRequestedChanges(
-        cvText,
+        baseDraft,
         jobDescription,
-        improvedCV || cvText,
+        currentDraft,
         request,
         apiKey,
         apiProvider,
@@ -3964,8 +4192,8 @@ export default function App() {
         addLogEntry
       );
 
-      const baseText = cvText || '';
-      const draftText = improvedCV || proposedCV || cvText || '';
+      const baseText = baseDraft || '';
+      const draftText = currentDraft || '';
       const existingSignature = new Set(changes.map((c) => `${c.original}→${c.replacement}`));
       const now = Date.now();
 
@@ -4001,6 +4229,11 @@ export default function App() {
         });
         return next;
       });
+      setEditorText((prevDraft) => {
+        const base = typeof prevDraft === 'string' && prevDraft ? prevDraft : (cvText || '');
+        const { text } = applySuggestionsToCV(base, normalized);
+        return text;
+      });
     } catch (err) {
       setUserRequestError(err.message || 'Could not generate modifications from your request.');
       throw err;
@@ -4011,7 +4244,7 @@ export default function App() {
 
   const showPresentation = view === 'presentation' && changes.length > 0;
   const displayKeywordSnapshot = keywordSnapshot || proposedKeywordSnapshot;
-  const displayImprovedCV = improvedCV || proposedCV || cvText;
+  const displayImprovedCV = editorText || improvedCV || proposedCV || cvText;
 
   return (
     <>
@@ -4025,8 +4258,11 @@ export default function App() {
           selectedVoice={selectedVoice}
           improvedCV={displayImprovedCV}
           keywordSnapshot={displayKeywordSnapshot}
+          manualChanges={manualChanges}
           decisions={suggestionDecisions}
           onDecisionChange={handleDecisionChange}
+          editorValue={displayImprovedCV}
+          onEditorChange={handleEditorTextChange}
           onApplyAll={handleApplyAll}
           onUserRequest={handleUserRequest}
           isUserRequesting={isUserRequesting}
