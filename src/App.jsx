@@ -2183,6 +2183,8 @@ const CorrectionEditor = ({
 
     changes.forEach((change) => {
       const decision = decisions[change.id] || 'pending';
+       const isResolved = decision === 'accepted' || decision === 'rejected' || decision === 'skipped';
+       if (isResolved) return;
       const useReplacement = decision !== 'rejected' && decision !== 'skipped';
       const candidates = [];
       const replacementText = typeof change.replacement === 'string' ? change.replacement : '';
@@ -2264,6 +2266,18 @@ const CorrectionEditor = ({
     refs.setReference(null);
     requestAnimationFrame(() => update?.());
   }, [changes, refs, update]);
+
+  useEffect(() => {
+    if (!activeChangeId) return;
+    const decision = decisions[activeChangeId];
+    const changeStillExists = Array.isArray(changes) && changes.some((c) => c.id === activeChangeId);
+    const resolved = decision && decision !== 'pending';
+    if (!changeStillExists || resolved) {
+      setActiveChangeId(null);
+      refs.setReference(null);
+      requestAnimationFrame(() => update?.());
+    }
+  }, [activeChangeId, changes, decisions, refs, update]);
 
   useEffect(() => {
     const handleResize = () => update?.();
