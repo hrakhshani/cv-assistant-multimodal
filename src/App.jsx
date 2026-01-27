@@ -240,14 +240,17 @@ const mergeNarrativesIntoChanges = (changes = [], narrativeEntries = []) => {
 // ============================================
 
 const extractKeywords = async (jobDescription, apiKey, apiProvider = 'anthropic', onLog) => {
-  const prompt = `Given the following job description, identify the most important keywords and phrases that would increase a candidate's chances during the interview process.
+  const prompt = `Identify, prioritize, and structure most critical keywords and phrases from a provided job description for the purpose of optimizing a candidate’s CV and maximizing alignment with the role.
 
-Focus on:
-- Technical skills and tools
-- Methodologies and frameworks
-- Industry-specific terminology
-- Soft skills explicitly mentioned
-- Required qualifications and certifications
+The extracted keywords will be reused downstream to rewrite or enhance a CV, so precision, relevance, and fidelity to the job description’s language are essential.
+Reason before producing results: first explain how importance and prioritization were determined, then present the finalized keyword set.
+
+Focus Areas
+	•	Technical skills and tools (programming languages, platforms, software, systems)
+	•	Methodologies and frameworks (development, delivery, research, management, or operational approaches)
+	•	Industry-specific terminology (domain language, standards, regulations, protocols)
+	•	Soft skills explicitly mentioned (communication, leadership, collaboration, etc.)
+	•	Required qualifications and certifications (degrees, licenses, credentials)
 
 Return ONLY a JSON array of keywords, nothing else:
 
