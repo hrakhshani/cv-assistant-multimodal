@@ -255,14 +255,14 @@ Focus Areas
 Return ONLY a JSON array of keywords, nothing else:
 
 VALID EXAMPLE:
-{"keywords":[list of extracted keywords]}
+{"keywords":[list of most important extracted keywords]}
 
 JOB DESCRIPTION:
 ${jobDescription}`;
 
   try {
     let content;
-    const model = apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-5.2';
+    const model = 'gpt-4o';
 
     if (apiProvider === 'anthropic') {
       const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -292,7 +292,7 @@ ${jobDescription}`;
           model,
           messages: [{ role: 'user', content: prompt }],
           max_completion_tokens: 1000,
-          reasoning_effort: "low",
+          ...(model === 'gpt-5.2' ? { reasoning_effort: "medium" } : { temperature: 0 }),
           response_format: { type: 'json_object' }
         })
       });
@@ -318,7 +318,7 @@ ${jobDescription}`;
     onLog?.({
       stage: 'keywords',
       provider: apiProvider,
-      model: apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-5.2',
+      model: apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : apiProvider === 'openai-4o' ? 'gpt-4o' : 'gpt-5.2',
       prompt,
       response: error.message,
       status: 'error'
@@ -390,16 +390,7 @@ const analyzeCV = async (cvText, jobDescription, apiKey, apiProvider = 'anthropi
   });
 
   // Step 3: Build enhanced analysis prompt
-  const systemPrompt = `You are an expert CV analyst focused on ethical, honest CV improvements. Your role is to help job seekers present their genuine qualifications more effectively—not to fabricate or exaggerate.
-
-EXTRACTED KEYWORDS FROM JOB DESCRIPTION (validated):
-${keywordsInJob.join(', ')}
-
-KEYWORDS ALREADY IN CV:
-${keywordsInCV.join(', ')}
-
-KEYWORDS IN JOB BUT MISSING FROM CV:
-${missingKeywords.join(', ')}
+  const systemPrompt = `You are an expert CV analyst focused on ethical, honest CV improvements. Your role is to help job seekers present their genuine qualifications more effectively.
 
 Given the job description, the current CV, and the extracted keywords (limited strictly to those that explicitly appear in either text), apply only the necessary changes to improve the CV's relevance, clarity, and competitiveness for the role.
 
@@ -427,9 +418,7 @@ MODIFICATION CATEGORIES (use ONLY these types):
 
 STRICT RULES:
 - Do NOT add skills, experiences, metrics, or keywords not explicitly supported by the original CV
-- Do NOT suggest adding missing keywords unless the CV already demonstrates that skill in different words
 - The goal is honest optimization, not fabrication
-- Help both job seekers AND HR find genuine matches
 
 Return ONLY valid JSON:
 {
@@ -453,10 +442,15 @@ Return ONLY valid JSON:
   ]
 }
 
-Ensure that proposed modifications do not conflict with one another. Only include independent, non-overlapping changes. Provide high-impact suggestions only. The "original" field MUST be an exact substring from the CV.`;
+Ensure that proposed modifications do not conflict with one another. Only include independent, non-overlapping changes. Provide high-impact suggestions only. The "original" field MUST be an exact substring from the CV.
+
+EXTRACTED KEYWORDS FROM JOB DESCRIPTION :
+${keywordsInJob.join(', ')}
+
+`;
 
   const userMessage = `JOB DESCRIPTION:\n${jobDescription}\n\nCV:\n${cvText}`;
-  const model = apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-5.2';
+  const model = apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : apiProvider === 'openai-4o' ? 'gpt-4o' : 'gpt-5.2';
   const combinedPrompt = apiProvider === 'anthropic'
     ? `${systemPrompt}\n\n${userMessage}`
     : `System:\n${systemPrompt}\n\nUser:\n${userMessage}`;
@@ -500,8 +494,7 @@ Ensure that proposed modifications do not conflict with one another. Only includ
             { role: 'user', content: userMessage }
           ],
           max_completion_tokens: 5000,
-          reasoning_effort: "low",
-          verbosity: "medium",
+          ...(model === 'gpt-5.2' ? { reasoning_effort: "low", verbosity: "medium" } : { temperature: 0 }),
           response_format: { type: 'json_object' }
         })
       });
@@ -640,7 +633,7 @@ Return ONLY valid JSON:
 }`;
 
   try {
-    const model = apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-5.2';
+    const model = apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : apiProvider === 'openai-4o' ? 'gpt-4o' : 'gpt-5.2';
     let content = '';
 
     if (apiProvider === 'anthropic') {
@@ -671,7 +664,7 @@ Return ONLY valid JSON:
           model,
           messages: [{ role: 'user', content: prompt }],
           max_completion_tokens: 2000,
-          reasoning_effort: 'medium',
+          ...(model === 'gpt-5.2' ? { reasoning_effort: 'medium' } : { temperature: 0 }),
           response_format: { type: 'json_object' }
         })
       });
@@ -704,7 +697,7 @@ Return ONLY valid JSON:
     onLog?.({
       stage: 'user-request',
       provider: apiProvider,
-      model: apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-5.2',
+      model: apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : apiProvider === 'openai-4o' ? 'gpt-4o' : 'gpt-5.2',
       prompt,
       response: error.message,
       status: 'error'
@@ -3763,6 +3756,7 @@ Responsibilities:
                     className="w-full p-3 bg-white border border-slate-200 rounded-xl text-slate-900 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition"
                   >
                     <option value="openai">OpenAI (GPT-5.2)</option>
+                    <option value="openai-4o">OpenAI (GPT-4o)</option>
                     <option value="anthropic">Anthropic (Claude)</option>
                   </select>
                 </div>
