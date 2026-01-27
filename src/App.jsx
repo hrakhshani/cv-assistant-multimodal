@@ -360,7 +360,8 @@ const validateKeywords = (keywords = [], jobDescription = '', cvText = '') => {
         inJobDescription: keywordMatchesText(keyword, jobDescription),
         inCV: keywordMatchesText(keyword, cvText)
       };
-    });
+    })
+    .filter((kw) => kw.inJobDescription); // Only keep keywords that are actually in the job description
 };
 
 const analyzeCV = async (cvText, jobDescription, apiKey, apiProvider = 'anthropic', onLog, onProgress, providedKeywords = null) => {
@@ -372,9 +373,9 @@ const analyzeCV = async (cvText, jobDescription, apiKey, apiProvider = 'anthropi
   // Step 2: Validate keywords actually appear in the text
   const validatedKeywords = validateKeywords(rawKeywords, jobDescription, cvText);
   
-  const keywordsInJob = validatedKeywords.filter(k => k.inJobDescription).map(k => k.keyword);
+  const keywordsInJob = validatedKeywords.map(k => k.keyword);
   const keywordsInCV = validatedKeywords.filter(k => k.inCV).map(k => k.keyword);
-  const missingKeywords = validatedKeywords.filter(k => k.inJobDescription && !k.inCV).map(k => k.keyword);
+  const missingKeywords = validatedKeywords.filter(k => !k.inCV).map(k => k.keyword);
 
   onProgress?.({
     stage: 'keywords',
@@ -1990,10 +1991,8 @@ const KeywordReviewModal = ({
     [keywords, jobDescription, cvText]
   );
 
-  const keywordsInJob = validated.filter((k) => k.inJobDescription).map((k) => k.keyword);
   const keywordsInCV = validated.filter((k) => k.inCV).map((k) => k.keyword);
-  const missingInCV = validated.filter((k) => k.inJobDescription && !k.inCV).map((k) => k.keyword);
-  const notInJob = validated.filter((k) => !k.inJobDescription).map((k) => k.keyword);
+  const missingInCV = validated.filter((k) => !k.inCV).map((k) => k.keyword);
 
   if (!open) return null;
 
@@ -2077,11 +2076,6 @@ const KeywordReviewModal = ({
                 Add keyword
               </button>
             </div>
-            {notInJob.length > 0 && (
-              <p className="text-xs text-amber-700 mt-2">
-                {notInJob.length} term{notInJob.length === 1 ? '' : 's'} aren't in the job description; they'll be deprioritized.
-              </p>
-            )}
           </div>
 
           <div className="max-h-72 overflow-y-auto p-4 rounded-2xl border border-slate-200 bg-white">
@@ -2097,9 +2091,6 @@ const KeywordReviewModal = ({
                     <div className="flex-1">
                       <div className="text-sm font-semibold text-slate-900 break-words">{kw.keyword}</div>
                       <div className="flex items-center gap-2 mt-1 flex-wrap text-[11px]">
-                        <span className={`px-2 py-0.5 rounded-lg border ${kw.inJobDescription ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
-                          {kw.inJobDescription ? 'In job post' : 'Not in job post'}
-                        </span>
                         <span className={`px-2 py-0.5 rounded-lg border ${kw.inCV ? 'bg-sky-50 text-sky-700 border-sky-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>
                           {kw.inCV ? 'Already in CV' : 'Missing in CV'}
                         </span>
@@ -2163,6 +2154,7 @@ const CorrectionEditor = ({
   const internalEditorRef = useRef(null);
   const resolvedEditorRef = editorRef || internalEditorRef;
   const [activeChangeId, setActiveChangeId] = useState(null);
+  const [scrollOffset, setScrollOffset] = useState({ top: 0, left: 0 });
   const { refs, floatingStyles, update } = useFloating({
     placement: 'bottom-start',
     middleware: [
@@ -2286,9 +2278,9 @@ const CorrectionEditor = ({
   }, [update]);
 
   const syncScroll = useCallback(() => {
-    if (!overlayRef.current || !resolvedEditorRef?.current) return;
-    overlayRef.current.scrollTop = resolvedEditorRef.current.scrollTop;
-    overlayRef.current.scrollLeft = resolvedEditorRef.current.scrollLeft;
+    if (!resolvedEditorRef?.current) return;
+    const { scrollTop, scrollLeft } = resolvedEditorRef.current;
+    setScrollOffset({ top: scrollTop, left: scrollLeft });
     if (activeChangeId) update?.();
   }, [activeChangeId, resolvedEditorRef, update]);
 
@@ -2410,10 +2402,13 @@ const CorrectionEditor = ({
       <div className="flex-1 relative" ref={containerRef}>
         <div
           ref={overlayRef}
-          className="absolute inset-0 overflow-auto pointer-events-none z-10"
+          className="absolute inset-0 overflow-hidden pointer-events-none z-10"
           aria-hidden="true"
         >
-          <pre className="h-full w-full p-4 font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-words text-transparent">
+          <pre
+            className="w-full p-4 font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-words text-transparent"
+            style={{ transform: `translate(${-scrollOffset.left}px, ${-scrollOffset.top}px)` }}
+          >
             {renderedSegments}
           </pre>
         </div>
@@ -3924,7 +3919,7 @@ export default function App() {
         matchedKeywords: validatedList.filter((k) => k.inCV).length,
         matchedKeywordsList: validatedList.filter((k) => k.inCV).map((k) => k.keyword),
         missingKeywords: validatedList
-          .filter((k) => k.inJobDescription && !k.inCV)
+          .filter((k) => !k.inCV)
           .map((k) => k.keyword),
         message: 'Confirm, add, or remove keywords before we draft your improvements.'
       });
@@ -3949,7 +3944,7 @@ export default function App() {
     );
     const keywordList = cleaned.map((k) => k.keyword);
     const matchedList = cleaned.filter((k) => k.inCV).map((k) => k.keyword);
-    const missingList = cleaned.filter((k) => k.inJobDescription && !k.inCV).map((k) => k.keyword);
+    const missingList = cleaned.filter((k) => !k.inCV).map((k) => k.keyword);
 
     addLogEntry({
       stage: 'keywords',
