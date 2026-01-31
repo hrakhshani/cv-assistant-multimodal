@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useFloating, offset, flip, shift, autoUpdate } from '@floating-ui/react';
 
 // ============================================
 // CONFIGURATION
@@ -703,6 +702,174 @@ Return ONLY valid JSON:
       status: 'error'
     });
     console.error('User-request modification error:', error);
+    throw error;
+  }
+};
+
+// Analyze CV for keyword alignment opportunities - find terms that can be replaced with job description terminology
+const analyzeKeywordAlignment = async (
+  cvText,
+  jobDescription,
+  keywordsInJob,
+  apiKey,
+  apiProvider = 'anthropic',
+  onLog
+) => {
+  if (!cvText || !jobDescription || !keywordsInJob?.length) {
+    throw new Error('CV, job description, and keywords are required for alignment analysis.');
+  }
+
+  const prompt = `You are an ATS optimization expert. Your goal is to maximize keyword matches between a CV and job description by finding EVERY term in the CV that could be replaced with the job description's exact wording.
+
+BE THOROUGH - find as many alignment opportunities as possible. ATS systems do exact string matching, so even small differences matter.
+
+TYPES OF ALIGNMENTS TO FIND:
+1. Abbreviations vs full forms: "ML" -> "Machine Learning", "JS" -> "JavaScript", "DB" -> "Database"
+2. Spelling variations: "analyse" -> "analyze", "colour" -> "color", "optimisation" -> "optimization"
+3. Hyphenation differences: "frontend" -> "front-end", "e-commerce" -> "ecommerce", "real time" -> "real-time"
+4. Singular/plural: "API" -> "APIs", "system" -> "systems"
+5. Synonyms in context: "build" -> "develop", "create" -> "design", "handle" -> "manage"
+6. Title variations: "dev" -> "developer", "eng" -> "engineer", "mgr" -> "manager"
+7. Technology name variations: "Postgres" -> "PostgreSQL", "k8s" -> "Kubernetes", "React.js" -> "React"
+8. Verb form variations: "developing" -> "development", "managed" -> "management"
+9. Case sensitivity matters: "aws" -> "AWS", "sql" -> "SQL"
+10. Partial matches: if CV says "built REST endpoints" and job wants "REST APIs", suggest "endpoints" -> "APIs"
+
+KEYWORDS FROM JOB DESCRIPTION (these MUST appear in CV for ATS matching):
+${keywordsInJob.join(', ')}
+
+CV TEXT:
+${cvText}
+
+JOB DESCRIPTION (for context on exact terminology used):
+${jobDescription}
+
+INSTRUCTIONS:
+- Find EVERY instance where the CV uses different wording than the job description for the same concept
+- The "original" field must be an EXACT verbatim substring from the CV text (copy-paste exactly)
+- The "replacement" must match the job description's exact terminology
+- importance: "high" = core job requirement, "medium" = mentioned multiple times, "low" = nice to have
+
+Return ONLY valid JSON:
+{
+  "alignmentSuggestions": [
+    {
+      "original": "<exact verbatim text from CV>",
+      "replacement": "<job description's exact term>",
+      "importance": "<high|medium|low>"
+    }
+  ]
+}`;
+
+  try {
+    const model = apiProvider === 'anthropic'
+      ? 'claude-sonnet-4-20250514'
+      : apiProvider === 'openai-4o' ? 'gpt-4o' : 'gpt-4o';
+    let content = '';
+
+    if (apiProvider === 'anthropic') {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 8000,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+      content = data.content?.[0]?.text || '';
+    } else {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          max_completion_tokens: 8000,
+          ...(model === 'gpt-5.2' ? { reasoning_effort: 'medium' } : { temperature: 0 }),
+          response_format: { type: 'json_object' }
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+      content = data.choices?.[0]?.message?.content || '';
+    }
+
+    onLog?.({
+      stage: 'keyword-alignment',
+      provider: apiProvider,
+      model,
+      prompt,
+      response: content,
+      status: 'success'
+    });
+
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON found in alignment response');
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    const suggestions = Array.isArray(parsed.alignmentSuggestions)
+      ? parsed.alignmentSuggestions
+      : [];
+
+    // Find keywords that are currently missing from the CV
+    const missingKeywords = keywordsInJob.filter(kw => !keywordMatchesText(kw, cvText));
+
+    // Validate that original text exists in CV and replacement satisfies a missing keyword
+    const validated = suggestions
+      .map((s, idx) => {
+        const start = cvText.indexOf(s.original);
+        if (start === -1) {
+          console.warn(`Alignment suggestion "${s.original}" not found in CV, skipping`);
+          return null;
+        }
+        // Ensure replacement would satisfy at least one keyword that is missing from the CV
+        const wouldSatisfyMissing = missingKeywords.some(kw => keywordMatchesText(kw, s.replacement));
+        if (!wouldSatisfyMissing) {
+          console.warn(`Replacement "${s.replacement}" won't satisfy any missing keywords, skipping`);
+          return null;
+        }
+        return {
+          id: `align-${idx}`,
+          type: 'keyword',
+          original: s.original,
+          replacement: s.replacement,
+          importance: s.importance || 'medium',
+          startIndex: start,
+          endIndex: start + s.original.length
+        };
+      })
+      .filter(Boolean);
+
+    return {
+      suggestions: validated,
+      summary: {
+        totalFound: validated.length,
+        highPriority: validated.filter(s => s.importance === 'high').length,
+        mediumPriority: validated.filter(s => s.importance === 'medium').length,
+        lowPriority: validated.filter(s => s.importance === 'low').length
+      }
+    };
+  } catch (error) {
+    onLog?.({
+      stage: 'keyword-alignment',
+      provider: apiProvider,
+      model: apiProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-5.2',
+      prompt,
+      response: error.message,
+      status: 'error'
+    });
+    console.error('Keyword alignment error:', error);
     throw error;
   }
 };
@@ -1576,12 +1743,12 @@ const IntroSlide = ({
 // CHATGPT-STYLE OUTRO SLIDE
 // ============================================
 
-const OutroSlide = ({ 
-  isActive, 
-  score, 
-  newScore, 
-  totalChanges, 
-  onRestart, 
+const OutroSlide = ({
+  isActive,
+  score,
+  newScore,
+  totalChanges,
+  onRestart,
   onBack,
   onReplay,
   improvedCV,
@@ -1597,7 +1764,9 @@ const OutroSlide = ({
   onSendUserRequest,
   isRequestingUserChange,
   userRequestError,
-  onClearUserRequestError
+  onClearUserRequestError,
+  onAnalyzeAlignment,
+  isAnalyzingAlignment
 }) => {
   const [message, setMessage] = useState('');
   const [showKeywords, setShowKeywords] = useState(false);
@@ -1691,6 +1860,33 @@ const OutroSlide = ({
               className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg transition"
             >
               Accept all
+            </button>
+            <button
+              onClick={onAnalyzeAlignment}
+              disabled={isAnalyzingAlignment}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition flex items-center gap-1.5 ${
+                isAnalyzingAlignment
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+              }`}
+              title="Find CV terms that can be aligned with job description terminology"
+            >
+              {isAnalyzingAlignment ? (
+                <>
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                  </svg>
+                  Align Keywords
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -2131,6 +2327,148 @@ const KeywordReviewModal = ({
   );
 };
 
+// ============================================
+// ALIGNMENT PANEL COMPONENT
+// ============================================
+
+const AlignmentPanel = ({
+  open,
+  suggestions = [],
+  summary,
+  onClose,
+  onApplySuggestion,
+  onApplyAll,
+  decisions = {}
+}) => {
+  if (!open) return null;
+
+  const pendingSuggestions = suggestions.filter(s => decisions[s.id] !== 'accepted' && decisions[s.id] !== 'rejected');
+  const priorityColors = {
+    high: 'bg-rose-50 border-rose-200 text-rose-800',
+    medium: 'bg-amber-50 border-amber-200 text-amber-800',
+    low: 'bg-sky-50 border-sky-200 text-sky-800'
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-slate-900/40 backdrop-blur-sm">
+      <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden max-h-[85vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
+          <div>
+            <div className="text-xs uppercase font-semibold text-indigo-600">Keyword Alignment</div>
+            <div className="text-lg font-bold text-slate-900">Terminology Alignment Suggestions</div>
+            <p className="text-sm text-slate-600">
+              Replace CV terms with exact matches from the job description for better ATS compatibility.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-xl border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 transition"
+            aria-label="Close alignment panel"
+          >
+            <span aria-hidden="true">✕</span>
+          </button>
+        </div>
+
+        {/* Summary Stats */}
+        {summary && (
+          <div className="px-6 py-3 bg-indigo-50 border-b border-indigo-100">
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-indigo-900">{summary.totalFound}</span>
+                <span className="text-indigo-700">alignments found</span>
+              </div>
+              {summary.highPriority > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-xs font-medium">
+                  {summary.highPriority} high priority
+                </span>
+              )}
+              {summary.mediumPriority > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">
+                  {summary.mediumPriority} medium
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Suggestions List */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {suggestions.length === 0 ? (
+            <div className="text-center py-8 text-slate-500">
+              <p>No alignment opportunities found.</p>
+              <p className="text-sm mt-1">Your CV terminology already matches the job description well.</p>
+            </div>
+          ) : (
+            suggestions.map((suggestion) => {
+              const decision = decisions[suggestion.id] || 'pending';
+              const isApplied = decision === 'accepted';
+              const isRejected = decision === 'rejected';
+
+              return (
+                <div
+                  key={suggestion.id}
+                  className={`p-3 rounded-xl border transition ${
+                    isApplied
+                      ? 'bg-emerald-50 border-emerald-200'
+                      : isRejected
+                        ? 'bg-gray-50 border-gray-200 opacity-60'
+                        : 'bg-white border-slate-200 hover:border-indigo-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${priorityColors[suggestion.importance] || priorityColors.medium}`}>
+                        {suggestion.importance}
+                      </span>
+                      <span className="px-2 py-1 bg-rose-50 border border-rose-100 rounded text-rose-700 line-through text-sm">
+                        {suggestion.original}
+                      </span>
+                      <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                      </svg>
+                      <span className="px-2 py-1 bg-emerald-50 border border-emerald-100 rounded text-emerald-700 font-medium text-sm">
+                        {suggestion.replacement}
+                      </span>
+                    </div>
+                    {!isApplied && !isRejected && (
+                      <button
+                        onClick={() => onApplySuggestion?.(suggestion.id)}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg transition flex-shrink-0"
+                      >
+                        Apply
+                      </button>
+                    )}
+                    {isApplied && (
+                      <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-lg">
+                        Applied
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Footer */}
+        {pendingSuggestions.length > 0 && (
+          <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+            <span className="text-sm text-slate-600">
+              {pendingSuggestions.length} suggestion{pendingSuggestions.length !== 1 ? 's' : ''} pending
+            </span>
+            <button
+              onClick={onApplyAll}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition"
+            >
+              Apply All ({pendingSuggestions.length})
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // ============================================
 // CORRECTION EDITOR COMPONENT
@@ -2145,24 +2483,12 @@ const CorrectionEditor = ({
   onDecisionChange
 }) => {
   const containerRef = useRef(null);
-  const overlayRef = useRef(null);
-  const spanRefs = useRef(new Map());
   const internalEditorRef = useRef(null);
   const resolvedEditorRef = editorRef || internalEditorRef;
-  const [activeChangeId, setActiveChangeId] = useState(null);
-  const [scrollOffset, setScrollOffset] = useState({ top: 0, left: 0 });
-  const { refs, floatingStyles, update } = useFloating({
-    placement: 'bottom-start',
-    middleware: [
-      offset(8),
-      flip({ padding: 12 }),
-      shift({ padding: 12 })
-    ],
-    whileElementsMounted: autoUpdate
-  });
 
   const safeValue = typeof value === 'string' ? value : '';
 
+  // Build segments for pending changes only
   const segments = useMemo(() => {
     if (!Array.isArray(changes) || changes.length === 0 || !safeValue) return [];
 
@@ -2171,17 +2497,14 @@ const CorrectionEditor = ({
 
     changes.forEach((change) => {
       const decision = decisions[change.id] || 'pending';
-       const isResolved = decision === 'accepted' || decision === 'rejected' || decision === 'skipped';
-       if (isResolved) return;
-      const useReplacement = decision !== 'rejected' && decision !== 'skipped';
-      const candidates = [];
+      const isResolved = decision === 'accepted' || decision === 'rejected' || decision === 'skipped';
+      if (isResolved) return;
+
       const replacementText = typeof change.replacement === 'string' ? change.replacement : '';
       const originalText = typeof change.original === 'string' ? change.original : '';
 
-      if (useReplacement && replacementText) candidates.push(replacementText);
-      if (originalText) candidates.push(originalText);
-      if (!useReplacement && replacementText) candidates.push(replacementText);
-
+      // Try to find the replacement text first (since it's applied), then fall back to original
+      const candidates = [replacementText, originalText].filter(Boolean);
       let matchIndex = -1;
       let matchedText = '';
 
@@ -2198,10 +2521,7 @@ const CorrectionEditor = ({
         }
       }
 
-      if (matchIndex === -1 && typeof change.startIndex === 'number') {
-        matchIndex = Math.max(0, Math.min(change.startIndex, Math.max(safeValue.length - 1, 0)));
-        matchedText = replacementText || originalText || safeValue.slice(matchIndex, matchIndex + 1);
-      }
+      if (matchIndex === -1) return;
 
       const endIndex = matchIndex + matchedText.length;
       if (matchIndex < 0 || endIndex <= matchIndex) return;
@@ -2214,7 +2534,9 @@ const CorrectionEditor = ({
         start: matchIndex,
         end: endIndex,
         change,
-        matchedText
+        matchedText,
+        originalText,
+        replacementText
       });
     });
 
@@ -2223,102 +2545,51 @@ const CorrectionEditor = ({
       .sort((a, b) => a.start - b.start || b.end - a.end);
   }, [changes, decisions, safeValue]);
 
-  const registerSpan = useCallback((id, node) => {
-    if (!spanRefs.current) return;
-    if (node) {
-      spanRefs.current.set(id, node);
-      if (id === activeChangeId) {
-        refs.setReference(node);
-        requestAnimationFrame(() => update?.());
-      }
-    } else {
-      spanRefs.current.delete(id);
-    }
-  }, [activeChangeId, refs, update]);
+  // Count pending changes
+  const pendingChanges = useMemo(() => {
+    return changes.filter(c => {
+      const decision = decisions[c.id] || 'pending';
+      return decision !== 'accepted' && decision !== 'rejected' && decision !== 'skipped';
+    });
+  }, [changes, decisions]);
 
-  useEffect(() => {
-    if (!activeChangeId) {
-      refs.setReference(null);
-      return;
-    }
-    const node = spanRefs.current.get(activeChangeId);
-    refs.setReference(node || null);
-    if (node) {
-      requestAnimationFrame(() => update?.());
-    }
-  }, [activeChangeId, refs, segments, update]);
+  const handleAccept = useCallback((changeId) => {
+    onDecisionChange?.(changeId, 'accepted');
+  }, [onDecisionChange]);
 
-  useEffect(() => {
-    // Close any open popover when a fresh set of recommendations is loaded
-    setActiveChangeId(null);
-    refs.setReference(null);
-    requestAnimationFrame(() => update?.());
-  }, [changes, refs, update]);
+  const handleReject = useCallback((changeId) => {
+    onDecisionChange?.(changeId, 'rejected');
+  }, [onDecisionChange]);
 
-  useEffect(() => {
-    if (!activeChangeId) return;
-    const decision = decisions[activeChangeId];
-    const changeStillExists = Array.isArray(changes) && changes.some((c) => c.id === activeChangeId);
-    const resolved = decision && decision !== 'pending';
-    if (!changeStillExists || resolved) {
-      setActiveChangeId(null);
-      refs.setReference(null);
-      requestAnimationFrame(() => update?.());
-    }
-  }, [activeChangeId, changes, decisions, refs, update]);
+  const handleAcceptAll = useCallback(() => {
+    pendingChanges.forEach(change => {
+      onDecisionChange?.(change.id, 'accepted');
+    });
+  }, [pendingChanges, onDecisionChange]);
 
-  useEffect(() => {
-    const handleResize = () => update?.();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [update]);
+  const handleRejectAll = useCallback(() => {
+    pendingChanges.forEach(change => {
+      onDecisionChange?.(change.id, 'rejected');
+    });
+  }, [pendingChanges, onDecisionChange]);
 
-  const syncScroll = useCallback(() => {
-    if (!resolvedEditorRef?.current) return;
-    const { scrollTop, scrollLeft } = resolvedEditorRef.current;
-    setScrollOffset({ top: scrollTop, left: scrollLeft });
-    if (activeChangeId) update?.();
-  }, [activeChangeId, resolvedEditorRef, update]);
-
-  const handleCursorSelection = useCallback((event) => {
-    const pos = typeof event?.target?.selectionStart === 'number' ? event.target.selectionStart : 0;
-    const match = segments.find((seg) => pos >= seg.start && pos <= seg.end);
-    if (!match) {
-      setActiveChangeId(null);
-      refs.setReference(null);
-      requestAnimationFrame(() => update?.());
-    }
-  }, [refs, segments, update]);
-
-  useEffect(() => {
-    syncScroll();
-  }, [safeValue, segments, syncScroll]);
-
-  const renderedSegments = useMemo(() => {
+  // Render inline diff content with per-change buttons
+  const renderedContent = useMemo(() => {
     const output = [];
     let cursor = 0;
     const contentLength = safeValue.length;
 
-    const markerColorByType = {
-      correctness: '#17B26A',
-      clarity: '#2DB2D3',
-      engagement: '#7C7CF2',
-      delivery: '#F6A83F',
-      keyword: '#18B981'
-    };
-
-    const decisionClass = {
-      accepted: 'bg-emerald-600 text-white ring-emerald-200',
-      rejected: 'bg-rose-500 text-white ring-rose-200',
-      pending: 'bg-white text-slate-700 ring-slate-200',
-      skipped: 'bg-white text-slate-500 ring-slate-200'
-    };
-
     segments.forEach((seg, idx) => {
       const segStart = Math.max(0, Math.min(seg.start, contentLength));
       const segEnd = Math.max(segStart, Math.min(seg.end, contentLength));
+
+      // Add text before this segment
       if (segStart > cursor) {
-        output.push(safeValue.slice(cursor, segStart));
+        output.push(
+          <span key={`text-${cursor}`} className="text-gray-800">
+            {safeValue.slice(cursor, segStart)}
+          </span>
+        );
       }
 
       const renderStart = Math.max(segStart, cursor);
@@ -2328,167 +2599,108 @@ const CorrectionEditor = ({
         return;
       }
 
-      const decision = decisions[seg.change.id] || 'pending';
-      const accentColor = markerColorByType[seg.change.type] || markerColorByType.clarity;
-      const decisionStyles = decisionClass[decision] || decisionClass.pending;
-      const selectionStart = segStart;
-      const selectionEnd = segEnd;
-
+      // Render the inline diff with Accept/Ignore buttons
       output.push(
-        <span
-          key={`${seg.change.id}-${idx}`}
-          className="relative inline-block align-baseline pointer-events-auto"
-        >
-          <span className="invisible select-none">{safeValue.slice(renderStart, renderEnd)}</span>
-          <button
-            type="button"
-            ref={(node) => registerSpan(seg.change.id, node)}
-            className={`absolute right-0 translate-x-[8px] -top-2 inline-flex items-center justify-center w-5 h-5 rounded-full border border-white/60 shadow-sm text-[10px] font-bold transition hover:scale-110 focus:outline-none focus:ring-2 focus:ring-emerald-300 ${decisionStyles}`}
-            style={{ backgroundColor: decision === 'pending' ? accentColor : undefined, color: decision === 'pending' ? '#fff' : undefined }}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onClick={(e) => {
-              e.preventDefault();
-              setActiveChangeId(seg.change.id);
-              refs.setReference(e.currentTarget);
-              if (resolvedEditorRef?.current) {
-                resolvedEditorRef.current.focus();
-                resolvedEditorRef.current.setSelectionRange(selectionStart, selectionEnd);
-              }
-              requestAnimationFrame(() => update?.());
-            }}
-            title={seg.change.title || 'Correction'}
-            aria-label={`View recommendation: ${seg.change.title || 'Correction'}`}
-          >
-            +
-          </button>
+        <span key={`diff-${seg.change.id}-${idx}`} className="inline-flex items-baseline flex-wrap">
+          {/* Original text - red/pink with strikethrough */}
+          {seg.originalText && (
+            <span className="bg-red-100 text-red-700 line-through decoration-red-400 decoration-2 px-0.5 rounded-sm">
+              {seg.originalText}
+            </span>
+          )}
+          {/* Replacement text - green */}
+          {seg.replacementText && (
+            <span className="bg-green-100 text-green-800 font-medium px-0.5 rounded-sm">
+              {seg.replacementText}
+            </span>
+          )}
+          {/* Per-change action buttons */}
+          <span className="inline-flex items-center gap-1 ml-1 align-middle">
+            <button
+              type="button"
+              onClick={() => handleReject(seg.change.id)}
+              className="inline-flex items-center justify-center w-6 h-6 bg-white border border-gray-300 rounded text-gray-600 hover:bg-gray-100 hover:border-gray-400 transition text-xs font-medium shadow-sm"
+              title="Undo this change"
+              aria-label="Undo change"
+            >
+              &#x238C;
+            </button>
+            <button
+              type="button"
+              onClick={() => handleAccept(seg.change.id)}
+              className="inline-flex items-center justify-center w-6 h-6 bg-emerald-500 border border-emerald-500 rounded text-white hover:bg-emerald-600 transition text-xs font-medium shadow-sm"
+              title="Keep this change"
+              aria-label="Keep change"
+            >
+              &#x2713;
+            </button>
+          </span>
         </span>
       );
 
       cursor = Math.max(cursor, segEnd);
     });
 
+    // Add remaining text after last segment
     if (cursor < contentLength) {
-      output.push(safeValue.slice(cursor));
+      output.push(
+        <span key={`text-end`} className="text-gray-800">
+          {safeValue.slice(cursor)}
+        </span>
+      );
     }
 
     return output;
-  }, [decisions, registerSpan, refs, resolvedEditorRef, safeValue, segments, update]);
+  }, [safeValue, segments, handleAccept, handleReject]);
 
-  const activeChange = activeChangeId
-    ? changes.find((c) => c.id === activeChangeId)
-    : null;
-  const activeDecision = activeChange ? (decisions[activeChange.id] || 'pending') : 'pending';
-  const activeStyle = activeChange ? (categoryStyles[activeChange.type] || categoryStyles.clarity) : null;
-  const showPopover = !!(activeChange && refs.reference?.current);
-
-  const handleDecisionClick = useCallback((decision) => {
-    if (!activeChange) return;
-    const changeId = activeChange.id;
-    onDecisionChange?.(changeId, decision);
-    setActiveChangeId(null);
-    refs.setReference(null);
-    requestAnimationFrame(() => update?.());
-  }, [activeChange, onDecisionChange, refs, update]);
+  // If there are no pending changes, show plain text editor
+  if (pendingChanges.length === 0) {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="flex-1 relative" ref={containerRef}>
+          <textarea
+            ref={resolvedEditorRef}
+            value={safeValue}
+            onChange={(e) => onChange?.(e.target.value)}
+            spellCheck="false"
+            className="w-full h-full bg-white border-0 p-4 overflow-auto text-[13px] text-gray-800 font-mono leading-relaxed focus:outline-none resize-none"
+            placeholder="Your improved CV will appear here after applying the changes."
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-1 relative" ref={containerRef}>
-        <div
-          ref={overlayRef}
-          className="absolute inset-0 overflow-hidden pointer-events-none z-10"
-          aria-hidden="true"
-        >
-          <pre
-            className="w-full p-4 font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-words text-transparent"
-            style={{ transform: `translate(${-scrollOffset.left}px, ${-scrollOffset.top}px)` }}
-          >
-            {renderedSegments}
-          </pre>
+      {/* Main editor area with inline diff */}
+      <div className="flex-1 overflow-auto p-4 bg-white" ref={containerRef}>
+        <div className="font-mono text-[13px] leading-loose whitespace-pre-wrap break-words">
+          {renderedContent}
         </div>
-        <textarea
-          ref={resolvedEditorRef}
-          value={safeValue}
-          onChange={(e) => onChange?.(e.target.value)}
-          onScroll={syncScroll}
-          onClick={handleCursorSelection}
-          onKeyUp={handleCursorSelection}
-          onSelect={handleCursorSelection}
-          spellCheck="false"
-          className="w-full h-full bg-white border-0 p-4 overflow-auto text-[13px] text-gray-800 font-mono leading-relaxed focus:outline-none resize-none cv-editor-highlight relative"
-          placeholder="Your improved CV will appear here after applying the changes."
-        />
-        {showPopover && (
-          <div
-            ref={refs.setFloating}
-            className="absolute z-20 rounded-xl border border-gray-200 bg-white shadow-2xl"
-            style={{
-              ...floatingStyles,
-              minWidth: '320px',
-              maxWidth: '420px'
-            }}
-          >
-            <div className="p-4 space-y-3">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border bg-white"
-                    style={{
-                      color: activeStyle?.text || '#334155',
-                      borderColor: activeStyle?.bar || '#e2e8f0'
-                    }}
-                  >
-                    <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${activeStyle?.gradient || 'from-emerald-400 to-green-500'}`} />
-                    {activeStyle?.label || 'Correction'}
-                  </span>
-                  <span className="text-[11px] px-2 py-1 rounded-lg bg-gray-50 border border-gray-200 capitalize text-gray-700">
-                    {activeDecision}
-                  </span>
-                </div>
-                <div className="text-sm font-semibold text-gray-900">{activeChange.title}</div>
-                <p className="text-xs text-gray-600">{activeChange.description}</p>
-              </div>
+      </div>
 
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-100 break-words">
-                  <div className="text-[10px] uppercase font-semibold text-rose-700 mb-1">Original</div>
-                  <div className="text-rose-800 text-[11px]">{activeChange.original}</div>
-                </div>
-                <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-100 break-words">
-                  <div className="text-[10px] uppercase font-semibold text-emerald-700 mb-1">Replacement</div>
-                  <div className="text-emerald-900 font-medium text-[11px]">{activeChange.replacement}</div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleDecisionClick('accepted')}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    activeDecision === 'accepted'
-                      ? 'bg-emerald-500 text-white shadow-sm'
-                      : 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-                  }`}
-                >
-                  Accept
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDecisionClick('rejected')}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    activeDecision === 'rejected'
-                      ? 'bg-rose-500 text-white border-rose-500'
-                      : 'bg-white border border-rose-200 text-rose-700 hover:bg-rose-50'
-                  }`}
-                >
-                  Reject
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+      {/* Bottom action bar - Undo All / Keep All buttons */}
+      <div className="flex items-center justify-end gap-2 px-4 py-3 bg-gray-50 border-t border-gray-200">
+        <span className="text-sm text-gray-600 mr-auto">
+          {pendingChanges.length} change{pendingChanges.length !== 1 ? 's' : ''} pending
+        </span>
+        <button
+          type="button"
+          onClick={handleRejectAll}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition shadow-sm"
+        >
+          <span className="text-base">&#x238C;</span>
+          Undo All
+        </button>
+        <button
+          type="button"
+          onClick={handleAcceptAll}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 border border-emerald-600 rounded-lg text-sm font-medium text-white hover:bg-emerald-700 transition shadow-sm"
+        >
+          <span className="text-base">&#x2713;</span>
+          Keep All
+        </button>
       </div>
     </div>
   );
@@ -2507,14 +2719,14 @@ const PRESENTATION_TIMING = {
   beforeAfterToAudio: 200
 };
 
-const Presentation = ({ 
-  cvText, 
-  changes, 
-  score, 
-  onBack, 
-  apiKey, 
-  selectedVoice, 
-  improvedCV, 
+const Presentation = ({
+  cvText,
+  changes,
+  score,
+  onBack,
+  apiKey,
+  selectedVoice,
+  improvedCV,
   keywordSnapshot,
   manualChanges = [],
   decisions,
@@ -2525,7 +2737,15 @@ const Presentation = ({
   onUserRequest,
   isUserRequesting,
   userRequestError,
-  onClearUserRequestError
+  onClearUserRequestError,
+  onAnalyzeAlignment,
+  isAnalyzingAlignment,
+  showAlignmentPanel,
+  alignmentSuggestions,
+  alignmentSummary,
+  onCloseAlignmentPanel,
+  onApplyAlignmentSuggestion,
+  onApplyAllAlignments
 }) => {
   const [currentSlide, setCurrentSlide] = useState(() => changes.length);
   const [phase, setPhase] = useState('intro');
@@ -2986,6 +3206,17 @@ const Presentation = ({
             isRequestingUserChange={isUserRequesting}
             userRequestError={userRequestError}
             onClearUserRequestError={onClearUserRequestError}
+            onAnalyzeAlignment={onAnalyzeAlignment}
+            isAnalyzingAlignment={isAnalyzingAlignment}
+          />
+          <AlignmentPanel
+            open={showAlignmentPanel}
+            suggestions={alignmentSuggestions}
+            summary={alignmentSummary}
+            onClose={onCloseAlignmentPanel}
+            onApplySuggestion={onApplyAlignmentSuggestion}
+            onApplyAll={onApplyAllAlignments}
+            decisions={decisions}
           />
         </div>
       </div>
@@ -3844,6 +4075,10 @@ export default function App() {
   const [userRequestError, setUserRequestError] = useState(null);
   const [editorText, setEditorText] = useState('');
   const [manualChanges, setManualChanges] = useState([]);
+  const [isAnalyzingAlignment, setIsAnalyzingAlignment] = useState(false);
+  const [alignmentSuggestions, setAlignmentSuggestions] = useState([]);
+  const [alignmentSummary, setAlignmentSummary] = useState(null);
+  const [showAlignmentPanel, setShowAlignmentPanel] = useState(false);
   const manualSessionRef = useRef({ id: null, baseText: '', lastUpdated: 0 });
   const manualDebounceRef = useRef(null);
   const manualPendingRef = useRef(null);
@@ -4188,6 +4423,88 @@ export default function App() {
     });
   };
 
+  const handleAnalyzeAlignment = async () => {
+    if (!apiKey) {
+      return;
+    }
+    const currentText = editorText || improvedCV || cvText;
+    if (!currentText) {
+      return;
+    }
+    if (!validatedKeywords?.inJob?.length) {
+      return;
+    }
+
+    setIsAnalyzingAlignment(true);
+    setAlignmentSuggestions([]);
+    setAlignmentSummary(null);
+
+    try {
+      const result = await analyzeKeywordAlignment(
+        currentText,
+        jobDescription,
+        validatedKeywords.inJob,
+        apiKey,
+        apiProvider,
+        addLogEntry
+      );
+
+      setAlignmentSuggestions(result.suggestions);
+      setAlignmentSummary(result.summary);
+      setShowAlignmentPanel(true);
+
+      // Merge alignment suggestions into main changes if they don't already exist
+      if (result.suggestions.length > 0) {
+        const existingIds = new Set(changes.map(c => c.id));
+        const newSuggestions = result.suggestions.filter(s => !existingIds.has(s.id));
+
+        if (newSuggestions.length > 0) {
+          setChanges(prev => [...prev, ...newSuggestions]);
+          setSuggestionDecisions(prev => {
+            const next = { ...prev };
+            newSuggestions.forEach(s => {
+              next[s.id] = 'pending';
+            });
+            return next;
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Alignment analysis failed:', err);
+    } finally {
+      setIsAnalyzingAlignment(false);
+    }
+  };
+
+  const handleCloseAlignmentPanel = () => setShowAlignmentPanel(false);
+
+  const handleApplyAlignmentSuggestion = (suggestionId) => {
+    const suggestion = alignmentSuggestions.find(s => s.id === suggestionId);
+    if (!suggestion) return;
+
+    // Apply the change to editor text
+    setEditorText(prev => {
+      const text = prev || improvedCV || cvText || '';
+      const idx = text.indexOf(suggestion.original);
+      if (idx === -1) return prev;
+      return text.slice(0, idx) + suggestion.replacement + text.slice(idx + suggestion.original.length);
+    });
+
+    // Mark as accepted in decisions
+    setSuggestionDecisions(prev => ({
+      ...prev,
+      [suggestionId]: 'accepted'
+    }));
+  };
+
+  const handleApplyAllAlignments = () => {
+    alignmentSuggestions.forEach(s => {
+      if (suggestionDecisions[s.id] !== 'accepted') {
+        handleApplyAlignmentSuggestion(s.id);
+      }
+    });
+  };
+
   const handleUserRequest = async (userText) => {
     const request = (userText || '').trim();
     if (!request) {
@@ -4277,11 +4594,11 @@ export default function App() {
   return (
     <>
       {showPresentation ? (
-        <Presentation 
-          cvText={cvText} 
-          changes={changes} 
-          score={score} 
-          onBack={handleBack} 
+        <Presentation
+          cvText={cvText}
+          changes={changes}
+          score={score}
+          onBack={handleBack}
           apiKey={apiKey}
           selectedVoice={selectedVoice}
           improvedCV={displayImprovedCV}
@@ -4296,6 +4613,14 @@ export default function App() {
           isUserRequesting={isUserRequesting}
           userRequestError={userRequestError}
           onClearUserRequestError={() => setUserRequestError(null)}
+          onAnalyzeAlignment={handleAnalyzeAlignment}
+          isAnalyzingAlignment={isAnalyzingAlignment}
+          showAlignmentPanel={showAlignmentPanel}
+          alignmentSuggestions={alignmentSuggestions}
+          alignmentSummary={alignmentSummary}
+          onCloseAlignmentPanel={handleCloseAlignmentPanel}
+          onApplyAlignmentSuggestion={handleApplyAlignmentSuggestion}
+          onApplyAllAlignments={handleApplyAllAlignments}
         />
       ) : (
         <InputView onAnalyze={handleAnalyze} isLoading={isLoading} progress={analysisProgress} />
